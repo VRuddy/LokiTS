@@ -1174,8 +1174,7 @@ describe('loki', () => {
             },
           ],
         }).testFloat,
-        6.2,
-      );
+      ).toEqual(6.2);
 
       // findOne with $or op
       expect(
