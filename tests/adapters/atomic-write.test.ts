@@ -163,4 +163,47 @@ describe('writeFileAtomic', () => {
     expect(contents).toContain(readFileSync(target, 'utf8'));
     expect(readdirSync(dir)).toEqual(['app.db']);
   });
+
+  it('round-trips chunks larger than the flush threshold', async () => {
+    const target = join(newDir(), 'app.db');
+    const chunks = ['a', 'b', 'c'].map((c) => c.repeat(40_000));
+
+    await writeFileAtomic(target, lines(...chunks));
+
+    expect(readFileSync(target, 'utf8')).toBe(chunks.join(''));
+  });
+
+  it('removes the temporary file when the source iterable throws', async () => {
+    const dir = newDir();
+    const target = join(dir, 'app.db');
+    writeFileSync(target, 'old');
+    const failure = new Error('source failed');
+    async function* broken() {
+      yield 'partial';
+      throw failure;
+    }
+
+    await expect(writeFileAtomic(target, broken())).rejects.toBe(failure);
+
+    expect(readFileSync(target, 'utf8')).toBe('old');
+    expect(readdirSync(dir)).toEqual(['app.db']);
+  });
+
+  it('does not remove a file it did not create when open fails', async () => {
+    const real = defaultAtomicWriteIo();
+    const removed: string[] = [];
+    const failure = Object.assign(new Error('exists'), { code: 'EEXIST' });
+    const io: AtomicWriteIo = {
+      ...real,
+      open: () => Promise.reject(failure),
+      rm: async (path, options) => {
+        removed.push(path);
+        await real.rm(path, options);
+      },
+    };
+
+    await expect(writeFileAtomic(join(newDir(), 'app.db'), 'x', io)).rejects.toBe(failure);
+
+    expect(removed).toEqual([]);
+  });
 });

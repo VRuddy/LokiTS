@@ -46,12 +46,14 @@ export async function writeFileAtomic(
   io: AtomicWriteIo = defaultAtomicWriteIo(),
 ): Promise<void> {
   const dir = io.dirname(target);
-  const suffix = Math.random().toString(36).slice(2, 10);
+  const suffix = randomSuffix();
   const tmp = io.join(dir, `.${io.basename(target)}.${io.pid}.${suffix}.tmp`);
   let handle: WritableHandle | undefined;
+  let created = false;
 
   try {
     handle = await io.open(tmp, 'wx');
+    created = true;
     if (typeof data === 'string') {
       await handle.writeFile(data);
     } else {
@@ -75,11 +77,19 @@ export async function writeFileAtomic(
     if (handle) {
       await handle.close().catch(() => {});
     }
-    await io.rm(tmp, { force: true }).catch(() => {});
+    // a failed exclusive open leaves tmp to whoever owns it
+    if (created) {
+      await io.rm(tmp, { force: true }).catch(() => {});
+    }
     throw err;
   }
 
   await syncDirectory(io, dir);
+}
+
+function randomSuffix(): string {
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(4));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 async function renameWithRetry(io: AtomicWriteIo, from: string, to: string): Promise<void> {
