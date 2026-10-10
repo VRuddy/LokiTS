@@ -1,4 +1,3 @@
-// @ts-nocheck — spec héritée de LokiJS (inférence JS non typée) ; retirer lors du portage du module testé.
 import { describe, expect, it } from 'vitest';
 import 'fake-indexeddb/auto';
 import { IncrementalIndexedDBAdapter } from '../helpers/incremental-idb';
@@ -30,9 +29,9 @@ describe('IncrementalIndexedDBAdapter', () => {
     var db = new loki('test.db');
     var col1 = db.addCollection('test_collection');
 
-    var doc1 = { foo: '1' };
-    var doc2 = { foo: '2' };
-    var doc3 = { foo: '3' };
+    var doc1: any = { foo: '1' };
+    var doc2: any = { foo: '2' };
+    var doc3: any = { foo: '3' };
     col1.insert([doc1, doc2, doc3]);
     doc2.bar = 'true';
     col1.update(doc2);
@@ -102,9 +101,9 @@ describe('IncrementalIndexedDBAdapter', () => {
     var col2 = db.addCollection('test_collection2');
     col2.dirty = false;
 
-    var doc1 = { foo: '1' };
-    var doc2 = { foo: '2' };
-    var doc3 = { foo: '3' };
+    var doc1: any = { foo: '1' };
+    var doc2: any = { foo: '2' };
+    var doc3: any = { foo: '3' };
     col1.insert([doc1, doc2, doc3]);
     doc2.bar = 'true';
     col1.update(doc2);
@@ -133,10 +132,10 @@ describe('IncrementalIndexedDBAdapter', () => {
 
     // new dirtied ids get added in case of rollback
     db.saveDatabase();
-    var doc4 = { foo: '4' };
+    var doc4: any = { foo: '4' };
     col1.insert(doc4);
     expect(col1.dirtyIds).toEqual([doc4.$loki]);
-    var doc5 = { foo: '5' };
+    var doc5: any = { foo: '5' };
     col2.insert(doc5);
     expect(col2.dirty).toBe(true);
     expect(col2.dirtyIds).toEqual([doc5.$loki]);
@@ -149,7 +148,7 @@ describe('IncrementalIndexedDBAdapter', () => {
     // if successful, dirty ids don't zero out
     db.saveDatabase();
     expect(col1.dirtyIds).toEqual([]);
-    var doc6 = { foo: '6' };
+    var doc6: any = { foo: '6' };
     col1.insert(doc6);
     expect(col1.dirtyIds).toEqual([doc6.$loki]);
     callCallback();

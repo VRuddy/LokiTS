@@ -1,4 +1,3 @@
-// @ts-nocheck — spec héritée de LokiJS (inférence JS non typée) ; retirer lors du portage du module testé.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { loki } from '../helpers/loki';
 
@@ -95,7 +94,7 @@ describe('transforms', () => {
         },
       ];
 
-      var paramsor = {
+      var paramsor: any = {
         OwnerName: 'thor',
         OwnerNameOther: 'thor',
       };

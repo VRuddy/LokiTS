@@ -1,4 +1,3 @@
-// @ts-nocheck — spec héritée de LokiJS (inférence JS non typée) ; retirer lors du portage du module testé.
 import { describe, expect, it } from 'vitest';
 import { loki } from '../helpers/loki';
 
@@ -25,7 +24,7 @@ describe('collection', () => {
         return this.name.toUpperCase();
       }
     }
-    var coll = new SubclassedCollection('users', {});
+    var coll = new (SubclassedCollection as any)('users', {});
 
     expect(coll != null).toBe(true);
     expect('users'.toUpperCase()).toEqual(coll.extendedMethod());

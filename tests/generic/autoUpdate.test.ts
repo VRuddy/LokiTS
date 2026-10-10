@@ -1,11 +1,10 @@
-// @ts-nocheck — spec héritée de LokiJS (inférence JS non typée) ; retirer lors du portage du module testé.
 import { describe, expect, it } from 'vitest';
 import { loki } from '../helpers/loki';
 
 describe('autoupdate', () => {
   it('auto updates inserted documents', () =>
     new Promise<void>((done) => {
-      if (typeof Object.observe !== 'function') {
+      if (typeof (Object as any).observe !== 'function') {
         done();
         return;
       }
@@ -45,7 +44,7 @@ describe('autoupdate', () => {
 
   it('auto updates documents loaded from storage', () =>
     new Promise<void>((done) => {
-      if (typeof Object.observe !== 'function') {
+      if (typeof (Object as any).observe !== 'function') {
         done();
         return;
       }

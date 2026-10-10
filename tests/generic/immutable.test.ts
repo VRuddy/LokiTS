@@ -1,4 +1,3 @@
-// @ts-nocheck — spec héritée de LokiJS (inférence JS non typée) ; retirer lors du portage du module testé.
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { loki } from '../helpers/loki';
 
@@ -1083,7 +1082,7 @@ describe('immutable', () => {
       db.loadJSON(JSON.stringify(json), {
         users: {
           inflate: (src) => {
-            var dest = {};
+            var dest: any = {};
 
             dest.$loki = src.$loki;
             dest.meta = src.meta;

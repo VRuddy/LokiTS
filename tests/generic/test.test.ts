@@ -1,4 +1,3 @@
-// @ts-nocheck — spec héritée de LokiJS (inférence JS non typée) ; retirer lors du portage du module testé.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { suite } from '../helpers/assert-helpers';
 import { loki } from '../helpers/loki';
