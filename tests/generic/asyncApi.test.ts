@@ -346,6 +346,31 @@ describe('LokiPartitioningAdapter', () => {
     expect(saves).toBe(1);
   });
 
+  it('stops at the first failing page when paging', async () => {
+    const saved: string[] = [];
+    const inner = {
+      loadDatabase: async () => null,
+      saveDatabase: async (key: string) => {
+        saved.push(key);
+        if (key !== 'p.db') {
+          throw new Error('page quota');
+        }
+      },
+    };
+    const db = new Loki('p.db', {
+      adapter: new LokiPartitioningAdapter(inner, { paging: true, pageSize: 50 }),
+    });
+    for (const name of ['a', 'b']) {
+      const coll = db.addCollection(name);
+      for (let i = 0; i < 5; i++) {
+        coll.insert({ name: `${name}${i}` });
+      }
+    }
+
+    await expect(db.saveDatabase()).rejects.toThrow('page quota');
+    expect(saved).toEqual(['p.db', 'p.db.0.0']);
+  });
+
   it('reports a non-string inner result as an error', async () => {
     const inner = { loadDatabase: async () => ({ not: 'a string' }) };
     await expect(new LokiPartitioningAdapter(inner).loadDatabase('p.db')).rejects.toThrow(
