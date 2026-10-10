@@ -841,8 +841,7 @@ export class Collection<T extends object = any> extends LokiEventEmitter<Collect
    * Rebuild idIndex async with callback - useful for background syncing with a remote server
    */
   ensureIdAsync(callback: () => void) {
-    this.async(function (this: Collection<T>) {
-      // original quirk: `this` is not bound when invoked by async()
+    this.async(() => {
       this.ensureId();
     }, callback);
   }

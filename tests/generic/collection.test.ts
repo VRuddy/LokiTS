@@ -380,3 +380,17 @@ describe('collection', () => {
     expect(obj.b).toEqual(3);
   });
 });
+
+describe('ensureIdAsync', () => {
+  it('rebuilds the id index and calls back', () =>
+    new Promise<void>((done) => {
+      const coll = new loki('async.db').addCollection('c');
+      coll.insert([{ a: 1 }, { a: 2 }]);
+      coll.idIndex = null;
+
+      coll.ensureIdAsync(() => {
+        expect(coll.idIndex).toEqual([1, 2]);
+        done();
+      });
+    }));
+});
