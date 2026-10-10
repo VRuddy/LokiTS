@@ -62,6 +62,8 @@ export type {
   LegacyLokiAdapter,
   LokiAdapter,
   LokiIncrementalAdapter,
+  LokiKeyListingAdapter,
+  LokiLineStreamAdapter,
   LokiPersistenceAdapter,
 } from './types/adapter';
 export type { LokiDocument, LokiMeta } from './types/document';

@@ -1,84 +1,86 @@
 // Ported from LokiJS (lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
-/**
- * A loki persistence adapter which persists using node fs module
- */
-export class LokiFsAdapter {
-  fs!: any;
+import { withAdapterCallback } from '../persistence/callbacks';
+import { writeFileAtomic } from './fs/atomic-write';
+import { nodeModules } from './fs/node';
 
-  constructor() {
+const isMissing = (err: unknown) => (err as { code?: string } | null)?.code === 'ENOENT';
+
+async function* withNewlines(lines: AsyncIterable<string>): AsyncIterable<string> {
+  for await (const line of lines) {
+    yield `${line}\n`;
+  }
+}
+
+/** Node file adapter: one file per database, replaced atomically on every save. */
+export class LokiFsAdapter {
+  loadDatabase(dbname: string, callback?: (result: any) => void): Promise<string | null> {
+    return withAdapterCallback(this.read(dbname), callback, 'load') as Promise<string | null>;
+  }
+
+  saveDatabase(dbname: string, dbstring: string, callback?: (err?: any) => void): Promise<void> {
+    return withAdapterCallback(
+      writeFileAtomic(dbname, dbstring),
+      callback,
+      'write',
+    ) as Promise<void>;
+  }
+
+  deleteDatabase(dbname: string, callback?: (err?: any) => void): Promise<void> {
+    return withAdapterCallback(this.remove(dbname), callback, 'write') as Promise<void>;
+  }
+
+  async readLines(name: string): Promise<AsyncIterable<string> | null> {
     try {
-      // `process.getBuiltinModule` (Node >= 20.16 / 22.3) fonctionne aussi dans le build ESM,
-      // où `require` n'existe pas ; `require` reste le repli (CJS, bundlers).
-      const proc = (globalThis as any).process;
-      if (proc && typeof proc.getBuiltinModule === 'function') {
-        this.fs = proc.getBuiltinModule('fs') ?? null;
-      } else {
-        this.fs = typeof require !== 'undefined' ? require('fs') : null;
+      const handle = await nodeModules().fsp.open(name, 'r');
+      return handle.readLines({ encoding: 'utf8' });
+    } catch (err) {
+      if (isMissing(err)) {
+        return null;
       }
-    } catch (e) {
-      this.fs = null;
+      throw err;
     }
   }
 
-  /**
-   * loadDatabase() - Load data from file, will throw an error if the file does not exist
-   * @param dbname - the filename of the database to load
-   * @param callback - the callback to handle the result
-   */
-  loadDatabase(dbname: string, callback: (result: any) => void): void {
-    this.fs.stat(dbname, (err: any, stats: any) => {
-      if (!err && stats.isFile()) {
-        this.fs.readFile(
-          dbname,
-          {
-            encoding: 'utf8',
-          },
-          function readFileCallback(err: any, data: string) {
-            if (err) {
-              callback(new Error(err));
-            } else {
-              callback(data);
-            }
-          },
-        );
-      } else {
-        callback(null);
-      }
-    });
+  writeLines(name: string, lines: AsyncIterable<string>): Promise<void> {
+    return writeFileAtomic(name, withNewlines(lines));
   }
 
-  /**
-   * saveDatabase() - save data to file, will throw an error if the file can't be saved
-   * might want to expand this to avoid dataloss on partial save
-   * @param dbname - the filename of the database to load
-   * @param dbstring - serialized database
-   * @param callback - the callback to handle the result
-   */
-  saveDatabase(dbname: string, dbstring: string, callback: (err?: any) => void): void {
-    const self = this;
-    const tmpdbname = `${dbname}~`;
-    this.fs.writeFile(tmpdbname, dbstring, function writeFileCallback(err: any) {
-      if (err) {
-        callback(new Error(err));
-      } else {
-        self.fs.rename(tmpdbname, dbname, callback);
+  async listKeys(prefix: string): Promise<string[]> {
+    const { fsp, path } = nodeModules();
+    const base = path.basename(prefix);
+    let entries: string[];
+    try {
+      entries = await fsp.readdir(path.dirname(prefix));
+    } catch (err) {
+      if (isMissing(err)) {
+        return [];
       }
-    });
+      throw err;
+    }
+    // a prefix ending with "." has the basename "x." on every platform, so prefix + rest is exact
+    return entries
+      .filter((entry) => entry.startsWith(base))
+      .map((entry) => prefix + entry.slice(base.length));
   }
 
-  /**
-   * deleteDatabase() - delete the database file, will throw an error if the
-   * file can't be deleted
-   * @param dbname - the filename of the database to delete
-   * @param callback - the callback to handle the result
-   */
-  deleteDatabase(dbname: string, callback: (err?: any) => void): void {
-    this.fs.unlink(dbname, function deleteDatabaseCallback(err: any) {
-      if (err) {
-        callback(new Error(err));
-      } else {
-        callback();
+  private async read(dbname: string): Promise<string | null> {
+    try {
+      return await nodeModules().fsp.readFile(dbname, 'utf8');
+    } catch (err) {
+      if (isMissing(err)) {
+        return null;
       }
-    });
+      throw err;
+    }
+  }
+
+  private async remove(dbname: string): Promise<void> {
+    try {
+      await nodeModules().fsp.unlink(dbname);
+    } catch (err) {
+      if (!isMissing(err)) {
+        throw err;
+      }
+    }
   }
 }

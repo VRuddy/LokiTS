@@ -4,7 +4,10 @@ import {
   type LegacyLokiAdapter,
   Loki,
   type LokiAdapter,
+  LokiFsAdapter,
   type LokiIncrementalAdapter,
+  type LokiKeyListingAdapter,
+  type LokiLineStreamAdapter,
 } from '../../src';
 
 describe('adapter contracts', () => {
@@ -42,5 +45,11 @@ describe('adapter contracts', () => {
 
   it('types Loki.open', () => {
     expectTypeOf(Loki.open).returns.toEqualTypeOf<Promise<Loki>>();
+  });
+
+  it('types the optional adapter capabilities', () => {
+    expectTypeOf(new LokiFsAdapter()).toMatchTypeOf<
+      LokiLineStreamAdapter & LokiKeyListingAdapter
+    >();
   });
 });

@@ -37,6 +37,19 @@ export interface LegacyLokiAdapter {
   [key: string]: any;
 }
 
+/** Line-oriented I/O, used by LokiPartitioningAdapter to stream large collections. */
+export interface LokiLineStreamAdapter {
+  /** Lines of the stored value without terminators, or `null` when the key does not exist. */
+  readLines(name: string): Promise<AsyncIterable<string> | null>;
+  writeLines(name: string, lines: AsyncIterable<string>): Promise<void>;
+}
+
+/** Lets LokiPartitioningAdapter remove files left behind by an interrupted save. */
+export interface LokiKeyListingAdapter {
+  /** Keys starting with `prefix`, returned in the same form as `prefix`. */
+  listKeys(prefix: string): Promise<string[]>;
+}
+
 /** @deprecated Use {@link LokiAdapter} (promises) or {@link LegacyLokiAdapter} (callbacks). */
 export type LokiPersistenceAdapter = LegacyLokiAdapter;
 
