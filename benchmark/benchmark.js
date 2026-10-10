@@ -1,4 +1,4 @@
-var loki = require('../src/lokijs.js'),
+var loki = require('./engine.js'),
   db = new loki('perftest'),
   samplecoll = null,
   uniquecoll = null,

@@ -1,4 +1,4 @@
-var loki = require('../src/lokijs.js');
+var loki = require('./engine.js');
 
 var DOCUMENT_COUNT = 70000;
 var QUERY_INDEX_RANGE = 5;

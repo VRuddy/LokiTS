@@ -13,7 +13,7 @@
 // this is configured to use the loki-fs-structured-adapter which will 
 // stream output and input.
 
-var loki = require('../src/lokijs.js');
+var loki = require('./engine.js');
 var lfsa = require('../src/loki-fs-structured-adapter.js');
 var adapter = new lfsa();
 var db;

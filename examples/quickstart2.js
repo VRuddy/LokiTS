@@ -3,7 +3,7 @@
 // To better handle asynchronous adapters and to write code that can handle any adapter, 
 // you can use the following as example for setting up your initialization logic.
 
-const loki = require('../src/lokijs.js');
+const loki = require('../dist/index.cjs').loki;
 
 // We will use autoload (one time load at instantiation), and autosave  with 4 sec interval.
 var db = new loki('quickstart2.db', {

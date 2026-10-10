@@ -6,7 +6,7 @@
  */
  
 var crypto = require("crypto"); // for random string generation
-var loki = require('../src/lokijs.js');
+var loki = require('./engine.js');
 
 var INITIAL_DOCUMENT_COUNT = 10000;
 var ITERATION_COUNT = 40000; // number of permutations to perform

@@ -19,7 +19,7 @@
  */
 
 var crypto = require("crypto"); // for random string generation
-var loki = require('../src/lokijs.js');
+var loki = require('./engine.js');
 
 const INITIALCOUNT = 2000;
 const ITERATIONS = 2000;

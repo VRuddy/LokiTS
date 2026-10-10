@@ -60,7 +60,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "bench:legacy": "node benchmark/benchmark",
+    "bench": "node benchmark/benchmark.js",
     "test:dist": "node --test dist-tests/smoke.test.mjs"
   },
   "devDependencies": {
@@ -68,6 +68,7 @@
     "@types/node": "^26.6.4",
     "@vitest/coverage-v8": "^5.0.3",
     "fake-indexeddb": "^6.2.5",
+    "lokijs": "1.5.12",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^5.0.3"

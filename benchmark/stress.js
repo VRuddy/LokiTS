@@ -31,7 +31,7 @@
 // will keep db save io speeds from exponentially rising.
 
 var crypto = require("crypto"); // for random string generation
-var loki = require('../src/lokijs.js');
+var loki = require('./engine.js');
 var lfsa = require('../src/loki-fs-structured-adapter.js');
 
 // number of collections to create and populate

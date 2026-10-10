@@ -32,7 +32,7 @@
  * invokes either the old 'sort' codepath or the new index intersect algorithm.
  */
  
-var loki = require('../src/lokijs.js');
+var loki = require('./engine.js');
 
 // Total document count to seed database with
 var DOCUMENT_COUNT = 60000;

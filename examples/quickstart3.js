@@ -6,7 +6,7 @@
  * This example sets up multiple collections for our adapter (which has built in partitioning) to split out database into.
  */
 
-const loki = require('../src/lokijs.js');
+const loki = require('../dist/index.cjs').loki;
 const lfsa = require('../src/loki-fs-structured-adapter.js');
 
 var db = new loki('quickstart3.db', {

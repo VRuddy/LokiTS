@@ -6,7 +6,7 @@
  *
  */
 
-const loki = require('../src/lokijs.js');
+const loki = require('../dist/index.cjs').loki;
 
 var db = new loki("quickstart-chaining.db");
 

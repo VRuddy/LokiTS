@@ -12,7 +12,7 @@
  * We'll just use the default LokiFsAdapter for this.
  */
 
-const loki = require('../src/lokijs.js');
+const loki = require('../dist/index.cjs').loki;
 
 var db = new loki('quickstart-transforms.db', {
 	autoload: true,

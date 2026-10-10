@@ -3,7 +3,7 @@
 // Since loki is synchronous -except- when dealing with persistence (I/O), 
 //   and this database uses no persistence, this example can deal with loki entirely synchronously.
 
-const loki = require('../src/lokijs.js');
+const loki = require('../dist/index.cjs').loki;
 
 var db = new loki("quickstart1.db");
 var users = db.addCollection("users");
