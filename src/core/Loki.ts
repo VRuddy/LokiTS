@@ -1265,13 +1265,13 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
     return this.settleOrWarn(deleteFromAdapter(this as PersistenceHost), done);
   }
 
-  // a failure nobody handles (no callback, promise not awaited) must not crash the process,
-  // as the original swallowed it: report it as a warning, awaiting callers still get the rejection
+  // a failure without a callback must not crash the process as an unhandled rejection: it is reported
+  // as a warning, and callers who await still get the rejection. A throwing listener is rethrown from a timer.
   private settleOrWarn(promise: Promise<void>, callback?: (err?: any) => void): Promise<void> {
     if (callback) {
       return settle(promise, callback);
     }
-    promise.catch((err) => this.emit('warning', err));
+    promise.catch((err) => invoke(() => this.emit('warning', err)));
     return promise;
   }
 

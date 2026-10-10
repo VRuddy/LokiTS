@@ -180,6 +180,41 @@ describe('promise API', () => {
     }
   });
 
+  it('rethrows an exception of a warning listener from a timer, not as a rejection', async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    const thrown: unknown[] = [];
+    const realSetTimeout = globalThis.setTimeout;
+    const timers = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((
+      fn: (...args: unknown[]) => void,
+      ms?: number,
+      ...args: unknown[]
+    ) =>
+      realSetTimeout(() => {
+        try {
+          fn(...args);
+        } catch (err) {
+          thrown.push(err);
+        }
+      }, ms)) as typeof setTimeout);
+    try {
+      const db = new Loki('a.db', { adapter: failing });
+      db.on('warning', () => {
+        throw new Error('listener bug');
+      });
+
+      db.saveDatabase();
+      await flush(20);
+
+      expect(unhandled).toEqual([]);
+      expect(thrown.map((err) => (err as Error).message)).toEqual(['listener bug']);
+    } finally {
+      timers.mockRestore();
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+
   it('still rejects for a caller who awaits without a callback', async () => {
     const db = new Loki('a.db', { adapter: failing });
 
