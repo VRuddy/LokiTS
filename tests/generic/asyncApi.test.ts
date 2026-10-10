@@ -371,6 +371,23 @@ describe('LokiPartitioningAdapter', () => {
     expect(saved).toEqual(['p.db', 'p.db.0.0']);
   });
 
+  it('keeps the dirty flag of a change made while the export runs', async () => {
+    const inner = new LokiMemoryAdapter({ asyncResponses: true, asyncTimeout: 10 });
+    const db = new Loki('p.db', { adapter: new LokiPartitioningAdapter(inner) });
+    const coll = db.addCollection('c');
+    coll.insert({ a: 1 });
+
+    const saving = db.saveDatabase();
+    coll.insert({ a: 2 });
+    await saving;
+    expect(db.autosaveDirty()).toBe(true);
+
+    await db.saveDatabase();
+    expect(db.autosaveDirty()).toBe(false);
+    const reloaded = await Loki.open('p.db', { adapter: new LokiPartitioningAdapter(inner) });
+    expect(reloaded.getCollection('c')?.count()).toBe(2);
+  });
+
   it('reports a non-string inner result as an error', async () => {
     const inner = { loadDatabase: async () => ({ not: 'a string' }) };
     await expect(new LokiPartitioningAdapter(inner).loadDatabase('p.db')).rejects.toThrow(

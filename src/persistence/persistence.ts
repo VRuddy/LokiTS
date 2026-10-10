@@ -56,9 +56,17 @@ export async function saveToAdapter(host: PersistenceHost): Promise<void> {
 
   if (adapter.mode === 'reference' && typeof adapter.exportDatabase === 'function') {
     const copy = host.copy({ removeNonSerializable: true });
-    await callAdapter(adapter, 'exportDatabase', [host.filename, copy], 'write');
-    // cleared only after the export: reference adapters (partitioning) read `dirty` to pick what to write
+    // the adapter reads `dirty` from the copy, so the host flags can be cleared before the export, as below
+    const dirtyBefore = host.collections.filter((col) => col.dirty);
     host.autosaveClearFlags();
+    try {
+      await callAdapter(adapter, 'exportDatabase', [host.filename, copy], 'write');
+    } catch (err) {
+      for (const col of dirtyBefore) {
+        col.dirty = true;
+      }
+      throw err;
+    }
     return;
   }
 
