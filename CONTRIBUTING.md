@@ -1,10 +1,13 @@
 First of all thank you for contributing.
 
 ## Overview
-We try our best to adhere to the [airbnb](https://github.com/airbnb/javascript/blob/master/README.md) javascript style guidelines.
+
+The repository is currently being migrated from JavaScript to strict
+TypeScript. Keep changes focused, preserve the existing public API unless a
+change is explicitly documented, and add tests for behavioral changes.
 
 If you spot non compliant code in our codebase do not hesitate to flag it or even submit a pull request.
-Running `npm run lint` can help.
+Run the checks documented in `package.json` before opening a pull request.
 
 We do not ask that you agree with our guidelines but if you want to contribute you will have to respect them.
 
@@ -36,4 +39,4 @@ result.filter(doFilter);
 * comma first
 * avoid-semicolon-at-all-cost stupidity
 * general hipster code
-* coffeescript/TypeScript
+* generated build output, coverage reports, or local database files

@@ -10,6 +10,7 @@ examples/quickstart4.db
 examples/quickstart-dynview.db
 examples/quickstart-transforms.db
 coverage/
+*.db
 testCollections
 testCollections~
 LokiContinuum.db

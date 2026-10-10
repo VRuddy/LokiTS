@@ -1,15 +1,15 @@
 {
-  "name": "lokijs",
-  "version": "1.5.12",
-  "description": "Fast document oriented javascript in-memory database",
-  "homepage": "https://techfort.github.io/LokiJS/",
+  "name": "loki-ts",
+  "version": "0.1.0-dev",
+  "description": "Community TypeScript modernization of the LokiJS in-memory document database",
+  "homepage": "https://github.com/VRuddy/LokiTS",
   "main": "src/lokijs.js",
   "directories": {
     "example": "examples"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/techfort/LokiJS.git"
+    "url": "https://github.com/VRuddy/LokiTS.git"
   },
   "keywords": [
     "javascript",
@@ -46,7 +46,7 @@
   ],
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/techfort/LokiJS/issues"
+    "url": "https://github.com/VRuddy/LokiTS/issues"
   },
   "dependencies": {},
   "devDependencies": {

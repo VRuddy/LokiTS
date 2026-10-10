@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — LokiTS fork
+
+* documented the modernization roadmap and fork status
+* removed obsolete Travis CI and Bower metadata
+* renamed the development package to `loki-ts`
+
+The entries below are the historical LokiJS changelog retained for provenance.
+
 * add IncrementalIndexedDBAdapter
 * make ensureIndex faster
 * LokiEventEmitter.emit faster
