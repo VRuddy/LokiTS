@@ -5,6 +5,9 @@
 * documented the modernization roadmap and fork status
 * removed obsolete Travis CI and Bower metadata
 * renamed the development package to `loki-ts`
+* phase 1 toolchain: pnpm, Biome, Vitest, tsup (ESM + CJS + d.ts), strict TypeScript config
+* legacy Jasmine/Karma specs ported to Vitest (`tests/`); Karma, PhantomJS, jshint, istanbul, uglify removed
+* supported runtime: Node >= 20 (CI also covers 22, 24, 26); development requires Node >= 22.12
 
 The entries below are the historical LokiJS changelog retained for provenance.
 

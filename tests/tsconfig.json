@@ -1,0 +1,12 @@
+{
+  // Les specs héritées de Jasmine sont du JS ES5 typé a posteriori : on les vérifie de façon
+  // permissive tant que les modules correspondants ne sont pas portés (phase 2).
+  // Les nouveaux tests doivent être écrits en respectant le mode strict.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "strict": false,
+    "noImplicitAny": false,
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["./**/*.ts"]
+}

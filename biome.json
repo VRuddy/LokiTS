@@ -1,0 +1,82 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": [
+      "**",
+      "!**/src/**/*.js",
+      "!build",
+      "!docs",
+      "!demos",
+      "!examples",
+      "!benchmark",
+      "!benchmark.html",
+      "!tutorials",
+      "!original",
+      "!coverage",
+      "!dist",
+      "!pnpm-lock.yaml"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "always"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended"
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["tests/**"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedVariables": "off",
+            "noInvalidUseBeforeDeclaration": "off",
+            "noUnusedFunctionParameters": "off",
+            "noInnerDeclarations": "off"
+          },
+          "suspicious": {
+            "noImplicitAnyLet": "off",
+            "noExplicitAny": "off",
+            "noRedeclare": "off",
+            "noSelfCompare": "off",
+            "useIterableCallbackReturn": "off",
+            "noDoubleEquals": "off"
+          },
+          "complexity": {
+            "useLiteralKeys": "off",
+            "noCommaOperator": "off",
+            "useDateNow": "off",
+            "noArguments": "off"
+          },
+          "style": {
+            "useTemplate": "off"
+          }
+        }
+      }
+    }
+  ]
+}

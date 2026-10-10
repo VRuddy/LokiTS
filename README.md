@@ -26,8 +26,11 @@ La migration TypeScript n’est pas encore publiée comme package stable. Pour l
 moment, l’implémentation JavaScript héritée reste dans `src/`.
 
 ```bash
-npm install
-npm test
+pnpm install   # Node >= 22.12 pour le développement
+pnpm test       # Vitest
+pnpm check      # Biome (lint + format)
+pnpm typecheck  # tsc --noEmit
+pnpm build      # tsup -> dist/ (ESM + CJS + .d.ts)
 ```
 
 ## Modernisation prévue
