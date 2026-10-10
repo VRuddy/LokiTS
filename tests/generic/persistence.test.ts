@@ -417,7 +417,7 @@ describe('testing adapter functionality', () => {
           // now update a multi page items collection and verify all pages were saved
           tyr.maker = 'elves';
           items.update(tyr);
-          db.saveDatabase();
+          await db.saveDatabase();
           expect(mem.hashStore['sandbox.db'].savecount).toEqual(3);
           expect(mem.hashStore['sandbox.db.0.0'].savecount).toEqual(2);
           expect(mem.hashStore['sandbox.db.0.1'].savecount).toEqual(2);

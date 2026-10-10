@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Loki, LokiMemoryAdapter } from '../../src';
+import { Loki, LokiMemoryAdapter, LokiPartitioningAdapter } from '../../src';
 import { flush, ManualAdapter, TimedAdapter } from '../helpers/fake-adapters';
 
 const failing = {
@@ -304,5 +304,52 @@ describe('LokiMemoryAdapter', () => {
 
     await saving;
     expect(seen).toEqual(['saved']);
+  });
+});
+
+describe('LokiPartitioningAdapter', () => {
+  for (const paging of [false, true]) {
+    it(`round-trips through promises (paging: ${paging})`, async () => {
+      const inner = new LokiMemoryAdapter();
+      const adapter = new LokiPartitioningAdapter(inner, { paging, pageSize: 50 });
+      const db = new Loki('p.db', { adapter });
+      const users = db.addCollection('users');
+      for (let i = 0; i < 20; i++) {
+        users.insert({ name: `user${i}` });
+      }
+      db.addCollection('empty');
+
+      await db.saveDatabase();
+      const reloaded = await Loki.open('p.db', {
+        adapter: new LokiPartitioningAdapter(inner, { paging, pageSize: 50 }),
+      });
+
+      expect(reloaded.getCollection('users')?.count()).toBe(20);
+      expect(reloaded.getCollection('empty')?.count()).toBe(0);
+    });
+  }
+
+  it('stops at the first inner error', async () => {
+    let saves = 0;
+    const inner = {
+      loadDatabase: async () => null,
+      saveDatabase: async () => {
+        saves++;
+        throw new Error('quota');
+      },
+    };
+    const db = new Loki('p.db', { adapter: new LokiPartitioningAdapter(inner) });
+    db.addCollection('a').insert({ x: 1 });
+    db.addCollection('b').insert({ x: 2 });
+
+    await expect(db.saveDatabase()).rejects.toThrow('quota');
+    expect(saves).toBe(1);
+  });
+
+  it('reports a non-string inner result as an error', async () => {
+    const inner = { loadDatabase: async () => ({ not: 'a string' }) };
+    await expect(new LokiPartitioningAdapter(inner).loadDatabase('p.db')).rejects.toThrow(
+      'unexpected response from inner adapter',
+    );
   });
 });
