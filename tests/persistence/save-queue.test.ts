@@ -145,4 +145,116 @@ describe('SaveQueue', () => {
     pending[0].resolve();
     await save;
   });
+
+  it('a lock taken during a save does not start the queued save before the first ends', async () => {
+    const { run, pending } = controlledRun();
+    const queue = new SaveQueue(run, () => true);
+    let release!: () => void;
+
+    const a = queue.save();
+    const locked = queue.lock(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const b = queue.save();
+    const drained = queue.drain();
+    let drainedDone = false;
+    drained.then(() => {
+      drainedDone = true;
+    });
+
+    release();
+    await locked;
+    await tick();
+    expect(pending).toHaveLength(1);
+    expect(queue.busy).toBe(true);
+    expect(drainedDone).toBe(false);
+
+    pending[0].resolve();
+    await a;
+    expect(pending).toHaveLength(2);
+
+    let bDone = false;
+    b.then(() => {
+      bDone = true;
+    });
+    await tick();
+    expect(bDone).toBe(false);
+
+    pending[1].resolve();
+    await b;
+    await expect(drained).resolves.toBe(true);
+  });
+
+  it('overlapping locks keep saves back until the last one is released', async () => {
+    const { run, pending } = controlledRun();
+    const queue = new SaveQueue(run, () => true);
+    let release1!: () => void;
+    let release2!: () => void;
+
+    const lock1 = queue.lock(
+      () =>
+        new Promise<void>((resolve) => {
+          release1 = resolve;
+        }),
+    );
+    const lock2 = queue.lock(
+      () =>
+        new Promise<void>((resolve) => {
+          release2 = resolve;
+        }),
+    );
+    const save = queue.save();
+
+    release1();
+    await lock1;
+    await tick();
+    expect(pending).toHaveLength(0);
+    expect(queue.busy).toBe(true);
+
+    release2();
+    await lock2;
+    expect(pending).toHaveLength(1);
+    pending[0].resolve();
+    await save;
+    expect(queue.busy).toBe(false);
+  });
+
+  it('a run that throws synchronously rejects the save and does not jam the queue', async () => {
+    let calls = 0;
+    const queue = new SaveQueue(
+      () => {
+        calls++;
+        if (calls === 1) {
+          throw new Error('sync boom');
+        }
+        return Promise.resolve();
+      },
+      () => true,
+    );
+
+    const first = queue.save();
+    await expect(first).rejects.toThrow('sync boom');
+    expect(queue.busy).toBe(false);
+
+    await expect(queue.save()).resolves.toBeUndefined();
+    expect(calls).toBe(2);
+  });
+
+  it('when not throttled, a run that throws synchronously yields a rejected promise', async () => {
+    const queue = new SaveQueue(
+      () => {
+        throw new Error('sync boom');
+      },
+      () => false,
+    );
+
+    let promise!: Promise<void>;
+    expect(() => {
+      promise = queue.save();
+    }).not.toThrow();
+    await expect(promise).rejects.toThrow('sync boom');
+  });
 });

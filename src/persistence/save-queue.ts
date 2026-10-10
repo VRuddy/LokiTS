@@ -20,7 +20,7 @@ const nextMacrotask = () => new Promise<void>((resolve) => setTimeout(resolve, 0
  */
 export class SaveQueue {
   private inFlight = false;
-  private locked = false;
+  private locks = 0;
   private current: Waiter[] = [];
   private next: Waiter[] | null = null;
   private watchers: (() => void)[] = [];
@@ -31,12 +31,12 @@ export class SaveQueue {
   ) {}
 
   get busy(): boolean {
-    return this.inFlight || this.locked;
+    return this.inFlight || this.locks > 0;
   }
 
   save(): Promise<void> {
     if (!this.isThrottled()) {
-      return this.run();
+      return this.runSafely();
     }
     return new Promise((resolve, reject) => {
       const waiter = { resolve, reject };
@@ -74,20 +74,29 @@ export class SaveQueue {
   }
 
   async lock<T>(fn: () => Promise<T>): Promise<T> {
-    this.locked = true;
+    this.locks++;
     try {
       return await fn();
     } finally {
-      this.locked = false;
+      this.locks--;
       this.notifyWatchers();
       this.startNext();
+    }
+  }
+
+  // a synchronous throw must become a rejection, or inFlight would stay stuck
+  private runSafely(): Promise<void> {
+    try {
+      return this.run();
+    } catch (err) {
+      return Promise.reject(err);
     }
   }
 
   private start(waiters: Waiter[]): void {
     this.inFlight = true;
     this.current = waiters;
-    this.run().then(
+    this.runSafely().then(
       () => this.finish(false),
       (err) => this.finish(true, err),
     );
@@ -114,7 +123,7 @@ export class SaveQueue {
   }
 
   private startNext(): void {
-    if (this.next && !this.locked) {
+    if (this.next && !this.inFlight && this.locks === 0) {
       const next = this.next;
       this.next = null;
       this.start(next);
