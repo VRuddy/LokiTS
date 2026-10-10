@@ -1,4 +1,4 @@
-// Ported from LokiJS (src/lokijs.js), MIT. Main author: obeliskos (Dave), with Joe Minichino and LokiJS contributors.
+// Ported from LokiJS (lokijs.js), MIT. Main author: obeliskos (Dave), with Joe Minichino and LokiJS contributors.
 /** Options for {@link LokiMemoryAdapter}. */
 export interface LokiMemoryAdapterOptions {
   asyncResponses?: boolean;

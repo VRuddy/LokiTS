@@ -1,4 +1,4 @@
-// Ported from LokiJS (src/lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
+// Ported from LokiJS (lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
 import { clone } from './clone';
 
 export function deepFreeze(obj: any): void {

@@ -1,4 +1,4 @@
-// Ported from LokiJS (src/lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
+// Ported from LokiJS (lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
 import type { Collection } from '../core/Collection';
 import { LokiEventEmitter } from '../events/EventEmitter';
 import { Resultset, type ResultsetDataOptions, type SimpleSortOptions } from '../query/Resultset';
