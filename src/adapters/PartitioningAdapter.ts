@@ -66,7 +66,7 @@ export class LokiPartitioningAdapter {
   options!: LokiPartitioningAdapterOptions;
   /** What is committed for each database, so a save knows which files to keep and which to clean up. */
   declare states: Map<string, CommittedState>;
-  /** The last queued save or delete of each database: the next one waits for it. */
+  /** The last queued load, save or delete of each database: the next one waits for it. */
   declare queues: Map<string, Promise<void>>;
 
   constructor(adapter?: any, options?: LokiPartitioningAdapterOptions) {
@@ -115,7 +115,11 @@ export class LokiPartitioningAdapter {
 
   /** Loads a database saved as one key per collection (and per page with paging). */
   loadDatabase(dbname: string, callback?: (result: any) => void): Promise<Loki | null | undefined> {
-    return withAdapterCallback(this.load(dbname), callback, 'load');
+    return withAdapterCallback(
+      this.serialized(dbname, () => this.load(dbname)),
+      callback,
+      'load',
+    );
   }
 
   /** Reference mode: writes the dirty collections under a new generation, then commits by replacing the container. */
@@ -136,11 +140,17 @@ export class LokiPartitioningAdapter {
     ) as Promise<void>;
   }
 
-  /** Overlapping saves would start from the same committed state, and one would delete files the other commits. */
-  private serialized(dbname: string, operation: () => Promise<void>): Promise<void> {
+  /**
+   * Overlapping saves would start from the same committed state, and one would delete files the other
+   * commits; a load answered after a save would record an older state than the one committed.
+   */
+  private serialized<T>(dbname: string, operation: () => Promise<T>): Promise<T> {
     const result = (this.queues.get(dbname) ?? Promise.resolve()).then(operation);
     // a failure must not block the operations queued after it
-    const tail = result.catch(() => {});
+    const tail = result.then(
+      () => {},
+      () => {},
+    );
     this.queues.set(dbname, tail);
     void tail.then(() => {
       if (this.queues.get(dbname) === tail) {

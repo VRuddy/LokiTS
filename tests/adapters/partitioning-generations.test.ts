@@ -18,6 +18,30 @@ class FlakyMemoryAdapter extends LokiMemoryAdapter {
   }
 }
 
+/** Memory adapter that holds back the answer of the next load of `gateKey` until `release()`. */
+class GatedMemoryAdapter extends LokiMemoryAdapter {
+  gateKey: string | undefined;
+  private opened: Promise<void> = Promise.resolve();
+  release: () => void = () => {};
+
+  hold(key: string): void {
+    this.gateKey = key;
+    this.opened = new Promise((resolve) => {
+      this.release = resolve;
+    });
+  }
+
+  override async loadDatabase(dbname: string): Promise<string | null> {
+    // read now, answer later: the answer is what the storage held at the time of the read
+    const value = await super.loadDatabase(dbname);
+    if (dbname === this.gateKey) {
+      this.gateKey = undefined;
+      await this.opened;
+    }
+    return value;
+  }
+}
+
 const manifestOf = (inner: LokiMemoryAdapter, name = 'g.db') =>
   JSON.parse(inner.hashStore[name].value).lokiPartitions;
 
@@ -180,6 +204,32 @@ describe('LokiPartitioningAdapter generations', () => {
     await Promise.all([saving, deleting]);
 
     expect(Object.keys(inner.hashStore)).toEqual([]);
+  });
+
+  it('orders a load with the saves of the same database', async () => {
+    const inner = new GatedMemoryAdapter();
+    const adapter = new LokiPartitioningAdapter(inner);
+    const db = new Loki('g.db', { adapter, throttledSaves: false });
+    db.addCollection('a').insert({ x: 1 });
+    db.addCollection('b').insert({ y: 1 });
+    await db.saveDatabase();
+
+    // the load reads the last file of generation 1, and answers once a save has committed generation 2
+    inner.hold(keyOf(manifestOf(inner).collections[1].files[0]));
+    const loading = new Loki('g.db', { adapter, throttledSaves: false }).loadDatabase();
+    db.getCollection('a')?.insert({ x: 2 });
+    db.getCollection('b')?.insert({ y: 2 });
+    const saving = db.saveDatabase();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    inner.release();
+    await Promise.all([loading, saving]);
+
+    db.getCollection('a')?.insert({ x: 3 });
+    await db.saveDatabase();
+
+    const reopened = await Loki.open('g.db', { adapter: new LokiPartitioningAdapter(inner) });
+    expect(reopened.getCollection('a')?.count()).toBe(3);
+    expect(reopened.getCollection('b')?.count()).toBe(2);
   });
 
   it('runs the next save after a failed one', async () => {
