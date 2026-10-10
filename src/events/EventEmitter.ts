@@ -62,8 +62,9 @@ export class LokiEventEmitter<E extends LokiEventMap = LokiEventMap> {
     }
 
     const listeners = this.events[eventName];
-    if (listeners) {
-      listeners.splice(listeners.indexOf(listener), 1);
+    const position = listeners ? listeners.indexOf(listener) : -1;
+    if (listeners && position !== -1) {
+      listeners.splice(position, 1);
     }
   }
 }

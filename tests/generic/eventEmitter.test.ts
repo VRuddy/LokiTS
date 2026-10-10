@@ -39,4 +39,17 @@ describe('eventEmitter', () => {
       db.emit('testEvent');
     }).toThrow(new Error('No event testEvent defined'));
   });
+
+  it('removeListener ignores a listener that was never registered', () => {
+    const fired: string[] = [];
+    const first = () => fired.push('first');
+    const second = () => fired.push('second');
+    users.on('insert', first);
+    users.on('insert', second);
+
+    users.removeListener('insert', () => {});
+    users.insert({ name: 'jane' });
+
+    expect(fired).toEqual(['first', 'second']);
+  });
 });
