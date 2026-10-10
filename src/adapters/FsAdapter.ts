@@ -1,7 +1,17 @@
 // Ported from LokiJS (lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
+import type { FileHandle } from 'node:fs/promises';
 import { withAdapterCallback } from '../persistence/callbacks';
 import { writeFileAtomic } from './fs/atomic-write';
 import { nodeModules } from './fs/node';
+
+async function* closingLines(handle: FileHandle): AsyncGenerator<string> {
+  try {
+    yield* handle.readLines({ encoding: 'utf8' });
+  } finally {
+    // runs on early exit or consumer error too, so the descriptor is never left open
+    await handle.close();
+  }
+}
 
 const isMissing = (err: unknown) => (err as { code?: string } | null)?.code === 'ENOENT';
 
@@ -30,15 +40,16 @@ export class LokiFsAdapter {
   }
 
   async readLines(name: string): Promise<AsyncIterable<string> | null> {
+    let handle: FileHandle;
     try {
-      const handle = await nodeModules().fsp.open(name, 'r');
-      return handle.readLines({ encoding: 'utf8' });
+      handle = await nodeModules().fsp.open(name, 'r');
     } catch (err) {
       if (isMissing(err)) {
         return null;
       }
       throw err;
     }
+    return closingLines(handle);
   }
 
   writeLines(name: string, lines: AsyncIterable<string>): Promise<void> {

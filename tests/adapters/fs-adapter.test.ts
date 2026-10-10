@@ -1,9 +1,11 @@
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -17,6 +19,16 @@ async function* numbered(count: number) {
   for (let i = 0; i < count; i++) {
     yield `line ${i}`;
   }
+}
+
+function openDescriptorsOn(file: string) {
+  return readdirSync('/proc/self/fd').filter((fd) => {
+    try {
+      return readlinkSync(`/proc/self/fd/${fd}`) === file;
+    } catch {
+      return false;
+    }
+  }).length;
 }
 
 async function collect(lines: AsyncIterable<string>) {
@@ -88,7 +100,63 @@ describe('LokiFsAdapter', () => {
     const lines = await adapter.readLines(file);
 
     expect(readFileSync(file, 'utf8').endsWith('line 99999\n')).toBe(true);
-    expect(await collect(lines as AsyncIterable<string>)).toHaveLength(100_000);
+    const all = await collect(lines as AsyncIterable<string>);
+    expect(all).toHaveLength(100_000);
+    expect(all[0]).toBe('line 0');
+    expect(all[50_000]).toBe('line 50000');
+  });
+
+  it('calls back with the error of a failing load', async () => {
+    const dir = newDir();
+    mkdirSync(join(dir, 'folder.db'));
+
+    const result = await new Promise((resolve) =>
+      new LokiFsAdapter().loadDatabase(join(dir, 'folder.db'), resolve),
+    );
+
+    expect(result).toMatchObject({ code: 'EISDIR' });
+  });
+
+  describe.skipIf(!existsSync('/proc/self/fd'))('line stream cleanup', () => {
+    it('closes the file when the consumer stops early', async () => {
+      const file = join(newDir(), 'big.db');
+      const adapter = new LokiFsAdapter();
+      await adapter.writeLines(file, numbered(1000));
+
+      for await (const line of (await adapter.readLines(file)) as AsyncIterable<string>) {
+        expect(line).toBe('line 0');
+        break;
+      }
+
+      expect(openDescriptorsOn(file)).toBe(0);
+      await adapter.deleteDatabase(file);
+      await expect(adapter.readLines(file)).resolves.toBeNull();
+    });
+
+    it('closes the file when the consumer throws', async () => {
+      const file = join(newDir(), 'big.db');
+      const adapter = new LokiFsAdapter();
+      await adapter.writeLines(file, numbered(1000));
+
+      const consume = async () => {
+        for await (const _line of (await adapter.readLines(file)) as AsyncIterable<string>) {
+          throw new Error('bad line');
+        }
+      };
+
+      await expect(consume()).rejects.toThrow('bad line');
+      expect(openDescriptorsOn(file)).toBe(0);
+    });
+
+    it('closes the file once the stream is fully read', async () => {
+      const file = join(newDir(), 'big.db');
+      const adapter = new LokiFsAdapter();
+      await adapter.writeLines(file, numbered(10));
+
+      await collect((await adapter.readLines(file)) as AsyncIterable<string>);
+
+      expect(openDescriptorsOn(file)).toBe(0);
+    });
   });
 
   it('returns null lines for a missing file', async () => {
