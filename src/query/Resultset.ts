@@ -535,7 +535,7 @@ export class Resultset<T extends object = any> {
    * @example
    * var over30 = users.chain().find({ age: { $gte: 30 } }).data();
    */
-  find(query?: LokiQuery<T> | 'getAll' | any, firstOnly?: boolean): this {
+  find(query?: LokiQuery<T> | 'getAll', firstOnly?: boolean): this {
     if (this.collection.data.length === 0) {
       this.filteredrows = [];
       this.filterInitialized = true;
@@ -945,7 +945,7 @@ export class Resultset<T extends object = any> {
    *   user.phoneFormat = "+49 AAAA BBBBBB";
    * });
    */
-  update(updateFunction: (obj: LokiDocument<T>) => any): this {
+  update(updateFunction: (obj: LokiDocument<T>) => LokiDocument<T> | undefined | void): this {
     if (typeof updateFunction !== 'function') {
       throw new TypeError('Argument is not a function');
     }

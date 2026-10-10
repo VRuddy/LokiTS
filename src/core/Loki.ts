@@ -6,7 +6,7 @@ import { LokiEventEmitter } from '../events/EventEmitter';
 import type { LokiPersistenceAdapter } from '../types/adapter';
 import { deepFreeze } from '../utils/freeze';
 import { Utils } from '../utils/helpers';
-import { Collection } from './Collection';
+import { Collection, type CollectionOptions } from './Collection';
 
 /** Options accepted by the Loki constructor and {@link Loki#configureOptions}. */
 export interface LokiConfigOptions {
@@ -325,7 +325,7 @@ export class Loki extends LokiEventEmitter {
    * @param options.ttlInterval - time interval for clearing out 'aged' documents; not set by default.
    * @returns a reference to the collection which was just added
    */
-  addCollection<T extends object = any>(name: string, options?: any): Collection<T> {
+  addCollection<T extends object = any>(name: string, options?: CollectionOptions): Collection<T> {
     let i: number;
     const len = this.collections.length;
 

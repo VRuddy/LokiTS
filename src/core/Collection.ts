@@ -1,11 +1,11 @@
 // Ported from LokiJS (src/lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
 import { LokiEventEmitter } from '../events/EventEmitter';
-import { DynamicView } from '../indexing/DynamicView';
+import { DynamicView, type DynamicViewOptions } from '../indexing/DynamicView';
 import { ExactIndex } from '../indexing/ExactIndex';
 import { UniqueIndex } from '../indexing/UniqueIndex';
 import { Comparators } from '../query/comparators';
 import { LokiOps } from '../query/operators';
-import { Resultset } from '../query/Resultset';
+import { Resultset, type TransformStep } from '../query/Resultset';
 import type { LokiDocument } from '../types/document';
 import type { LokiQuery } from '../types/query';
 import { type CloneMethod, clone } from '../utils/clone';
@@ -517,7 +517,7 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    *
    * var results = users.chain('progeny').data();
    */
-  addTransform(name: string, transform: any) {
+  addTransform(name: string, transform: TransformStep[]) {
     if (Object.hasOwn(this.transforms, name)) {
       throw new Error('a transform by that name already exists');
     }
@@ -538,7 +538,7 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param name - name to associate with transform
    * @param transform - a transformation object to save into collection
    */
-  setTransform(name: string, transform: any) {
+  setTransform(name: string, transform: TransformStep[]) {
     this.transforms[name] = transform;
   }
 
@@ -950,7 +950,7 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param query - (optional) query object to count results of
    * @returns number of documents in the collection
    */
-  count(query?: LokiQuery<any>) {
+  count(query?: LokiQuery<T>) {
     if (!query) {
       return this.data.length;
     }
@@ -1000,7 +1000,7 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    *
    * var results = pview.data();
    **/
-  addDynamicView(name: string, options?: any): DynamicView<T> {
+  addDynamicView(name: string, options?: DynamicViewOptions): DynamicView<T> {
     const dv = new DynamicView<T>(this, name, options);
     this.DynamicViews.push(dv);
 
@@ -1037,7 +1037,10 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param filterObject - 'mongo-like' query object (or deprecated filterFunction mode)
    * @param updateFunction - update function to run against filtered documents
    */
-  findAndUpdate(filterObject: any, updateFunction: (obj: any) => any) {
+  findAndUpdate(
+    filterObject: LokiQuery<T> | ((obj: LokiDocument<T>) => boolean),
+    updateFunction: (obj: LokiDocument<T>) => LokiDocument<T> | undefined | void,
+  ) {
     if (typeof filterObject === 'function') {
       this.updateWhere(filterObject, updateFunction);
     } else {
@@ -1050,7 +1053,7 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    *
    * @param filterObject - 'mongo-like' query object
    */
-  findAndRemove(filterObject: LokiQuery<any>) {
+  findAndRemove(filterObject: LokiQuery<T>) {
     this.chain().find(filterObject).remove();
   }
 
@@ -1071,6 +1074,8 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * // alternatively, insert array of documents
    * users.insert([{ name: 'Thor', age: 35}, { name: 'Loki', age: 30}]);
    */
+  insert(doc: T, overrideAdaptiveIndices?: boolean): LokiDocument<T>;
+  insert(doc: T[], overrideAdaptiveIndices?: boolean): LokiDocument<T>[];
   insert(doc: T | T[], overrideAdaptiveIndices?: boolean): any {
     if (!Array.isArray(doc)) {
       return this.insertOne(doc);
@@ -1229,6 +1234,8 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * Updates an object and notifies collection that the document has changed.
    * @param doc - document to update within the collection
    */
+  update(doc: LokiDocument<T>): LokiDocument<T>;
+  update(doc: LokiDocument<T>[]): void;
   update(doc: any): any {
     let adaptiveBatchOverride: boolean | undefined;
     let k: number;
@@ -1361,6 +1368,7 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
   /**
    * Add object to collection
    */
+  add(obj: T): LokiDocument<T>;
   add(obj: any): any {
     // if parameter isn't object exit with throw
     if ('object' !== typeof obj) {
@@ -1444,7 +1452,10 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param filterFunction - filter function whose results will execute update
    * @param updateFunction - update function to run against filtered documents
    */
-  updateWhere(filterFunction: (obj: any) => boolean, updateFunction: (obj: any) => any) {
+  updateWhere(
+    filterFunction: (obj: LokiDocument<T>) => boolean,
+    updateFunction: (obj: LokiDocument<T>) => LokiDocument<T> | undefined | void,
+  ) {
     const results = this.where(filterFunction);
     let i = 0;
     let obj: any;
@@ -1464,7 +1475,7 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * For 'mongo-like' querying you should migrate to [findAndRemove()]{@link Collection#findAndRemove}.
    * @param query - query object to filter on
    */
-  removeWhere(query: any) {
+  removeWhere(query: LokiQuery<T> | ((obj: LokiDocument<T>) => boolean)) {
     let list: LokiDocument<T>[];
     if (typeof query === 'function') {
       list = this.data.filter(query);
@@ -1624,6 +1635,8 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * Remove a document from the collection
    * @param doc - document to remove from collection
    */
+  remove(doc: LokiDocument<T> | number): T;
+  remove(doc: LokiDocument<T>[]): void;
   remove(doc: any): any {
     if (typeof doc === 'number') {
       doc = this.get(doc);
@@ -1713,6 +1726,12 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @returns Object reference if document was found, null if not,
    *     or an array if 'returnPosition' was passed.
    */
+  get(id: number | string): LokiDocument<T> | null;
+  get(id: number | string, returnPosition: true): [LokiDocument<T>, number] | null;
+  get(
+    id: number | string,
+    returnPosition?: boolean,
+  ): LokiDocument<T> | [LokiDocument<T>, number] | null;
   get(id: number | string, returnPosition?: boolean): any {
     if (!this.idIndex) {
       this.ensureId();
@@ -2233,6 +2252,8 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param value - unique value to search for
    * @returns document matching the value passed
    */
+  by(field: string): (value: unknown) => LokiDocument<T>;
+  by(field: string, value: unknown): LokiDocument<T>;
   by(field: string, value?: any): any {
     if (value === undefined) {
       return (value: any) => {
@@ -2252,7 +2273,7 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param query - query object used to perform search with
    * @returns First matching document, or null if none
    */
-  findOne(query?: LokiQuery<any>): LokiDocument<T> | null {
+  findOne(query?: LokiQuery<T>): LokiDocument<T> | null {
     query = query || {};
 
     // Instantiate Resultset and exec find op passing firstOnly = true param
@@ -2275,7 +2296,7 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param parameters - Object containing properties representing parameters to substitute
    * @returns (this) resultset, or data array if any map or join functions where called
    */
-  chain(transform?: string | any[], parameters?: any): Resultset<T> {
+  chain(transform?: string | TransformStep[], parameters?: object): Resultset<T> {
     const rs = new Resultset<T>(this);
 
     if (typeof transform === 'undefined') {
@@ -2292,7 +2313,7 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param query - 'mongo-like' query object
    * @returns Array of matching documents
    */
-  find(query?: LokiQuery<any>): LokiDocument<T>[] {
+  find(query?: LokiQuery<T>): LokiDocument<T>[] {
     return this.chain().find(query).data();
   }
 
@@ -2386,7 +2407,7 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param fun - filter function to run against all collection docs
    * @returns all documents which pass your filter function
    */
-  where(fun: (obj: any) => boolean): LokiDocument<T>[] {
+  where(fun: (obj: LokiDocument<T>) => boolean): LokiDocument<T>[] {
     return this.chain().where(fun).data();
   }
 
