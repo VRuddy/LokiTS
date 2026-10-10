@@ -6,6 +6,19 @@
 * removed obsolete Travis CI and Bower metadata
 * renamed the development package to `loki-ts`
 * new toolchain: pnpm, Biome, Vitest, tsup (ESM + CJS + d.ts), strict TypeScript config
+* persistence methods (saveDatabase, loadDatabase, deleteDatabase, close, throttledSaveDrain) return promises and keep accepting their callbacks; with a callback the promise never rejects
+* persistence now settles asynchronously (a microtask later) even with synchronous adapters; code that relied on same-tick completion must await
+* new `Loki.open(filename, options)` creates and loads a database in one await; autosave is enabled only after a successful load, so a failed open leaves no timer running
+* promise-based adapter contract (`LokiAdapter`, `LokiIncrementalAdapter`); callback adapters stay supported (`LegacyLokiAdapter`, `LokiPersistenceAdapter` is deprecated)
+* LokiMemoryAdapter and LokiPartitioningAdapter return promises; LokiPartitioningAdapter stops at the first inner error
+* fix: saves requested during loadDatabase stalled the save queue forever; they now run after the load
+* fix: the save queue could run two saves at once (a load starting while a save was in flight, overlapping loads, an adapter throwing synchronously); it never does now
+* fix: a failed save left collections marked clean (normal and reference modes), so autosave never retried and changes were lost; they stay dirty now
+* fix: throttledSaveDrain triggered an extra save, and with `recursiveWait: false` answered `undefined` instead of a boolean
+* fix: close(callback) registered the callback as a permanent `close` listener, so it ran again on every later close; the callback now runs once, after `close` is emitted, and an exception it throws surfaces asynchronously
+* fix: an incremental adapter calling getLokiCopy twice produced two save outcomes
+* callbacks receive `undefined` on success (previously the raw adapter value), an unexpected load response is an Error, and `loaded` is emitted before the loadDatabase callback
+* autosave and autoload errors without a callback are emitted as `warning` events; a failed persistence call made without a callback and without awaiting is reported the same way instead of becoming an unhandled rejection (awaiting callers still get the rejection, and the warning is emitted too); the `warning` payload is typed `unknown`
 * legacy Jasmine/Karma specs ported to Vitest (`tests/`); Karma, PhantomJS, jshint, istanbul, uglify removed
 * fix: removeListener no longer removes the last listener when given one that was never registered
 * fix: throttledSaveDrain called its callback twice when throttledSaves was false

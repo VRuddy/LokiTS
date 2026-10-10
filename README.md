@@ -33,6 +33,19 @@ pnpm typecheck  # tsc --noEmit
 pnpm build      # tsup -> dist/ (ESM + CJS + .d.ts)
 ```
 
+### Persistance
+
+```ts
+import { Loki, LokiFsAdapter } from 'loki-ts';
+
+const db = await Loki.open('app.db', { adapter: new LokiFsAdapter() });
+const users = db.getCollection('users') ?? db.addCollection('users');
+users.insert({ name: 'odin' });
+await db.saveDatabase();
+```
+
+Les méthodes de persistance renvoient des Promises et acceptent toujours leur callback d’origine.
+
 ## Modernisation prévue
 
 - Outillage moderne avec pnpm, Biome, Vitest et tsup
