@@ -4,6 +4,7 @@ import { LokiMemoryAdapter } from './adapters/MemoryAdapter';
 import { LokiPartitioningAdapter } from './adapters/PartitioningAdapter';
 import { Collection } from './core/Collection';
 import { Loki } from './core/Loki';
+import { LokiEventEmitter } from './events/EventEmitter';
 import { DynamicView } from './indexing/DynamicView';
 import { KeyValueStore } from './indexing/KeyValueStore';
 import { aeqHelper, Comparators, gtHelper, ltHelper } from './query/comparators';
@@ -11,9 +12,9 @@ import { LokiOps } from './query/operators';
 import { Resultset } from './query/Resultset';
 import { deepFreeze, freeze, unFreeze } from './utils/freeze';
 
-// Static members of the public object (formerly assigned on `Loki` at the end of lokijs.js).
-// They are assigned here, and only here, to avoid circular imports between modules.
-Object.assign(Loki, {
+// Statics of the public object (formerly assigned on `Loki` at the end of lokijs.js).
+// They are attached here, and only here, to avoid circular imports between modules.
+const statics = {
   deepFreeze,
   freeze,
   unFreeze,
@@ -34,31 +35,45 @@ Object.assign(Loki, {
   lt: ltHelper,
   gt: gtHelper,
   Comparators,
-});
+};
 
-export const loki = Loki;
-export default Loki;
+/** `Loki` with its static members attached, as exposed by the original `lokijs` module. */
+export const loki = Object.assign(Loki, statics);
+export default loki;
 
-export * from './adapters/FsAdapter';
-export * from './adapters/LocalStorageAdapter';
-export * from './adapters/MemoryAdapter';
-export * from './adapters/PartitioningAdapter';
-export * from './core/Collection';
-export * from './core/Loki';
-export * from './events/EventEmitter';
-export * from './indexing/BinaryIndex';
-export * from './indexing/DynamicView';
-export * from './indexing/ExactIndex';
-export * from './indexing/KeyValueStore';
-export * from './indexing/SortedIndex';
-export * from './indexing/UniqueIndex';
-export * from './query/comparators';
-export * from './query/operators';
-export * from './query/Resultset';
-export * from './types/adapter';
-export * from './types/document';
-export * from './types/query';
-export * from './utils/clone';
-export * from './utils/freeze';
-export * from './utils/helpers';
-export { Loki };
+export type {
+  CheckIndexOptions,
+  CollectionChange,
+  CollectionEvents,
+  CollectionOptions,
+} from './core/Collection';
+export type { LokiConfigOptions, LokiEvents } from './core/Loki';
+export type {
+  DynamicViewEvents,
+  DynamicViewFilter,
+  DynamicViewOptions,
+  DynamicViewSortCriteria,
+  DynamicViewSortCriteriaSimple,
+} from './indexing/DynamicView';
+export type { ResultsetDataOptions, SimpleSortOptions, TransformStep } from './query/Resultset';
+export type { LokiPersistenceAdapter } from './types/adapter';
+export type { LokiDocument, LokiMeta } from './types/document';
+export type { LokiQuery, QueryOperators } from './types/query';
+export type { CloneMethod } from './utils/clone';
+export {
+  Collection,
+  Comparators,
+  DynamicView,
+  deepFreeze,
+  freeze,
+  KeyValueStore,
+  Loki,
+  LokiEventEmitter,
+  LokiFsAdapter,
+  LokiLocalStorageAdapter,
+  LokiMemoryAdapter,
+  LokiOps,
+  LokiPartitioningAdapter,
+  Resultset,
+  unFreeze,
+};
