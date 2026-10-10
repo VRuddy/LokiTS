@@ -6,7 +6,8 @@ import { nodeModules } from './fs/node';
 
 async function* closingLines(handle: FileHandle): AsyncGenerator<string> {
   try {
-    yield* handle.readLines({ encoding: 'utf8' });
+    // no autoClose: when the stream closes the handle itself, handle.close() returns before the descriptor is released
+    yield* handle.readLines({ encoding: 'utf8', autoClose: false });
   } finally {
     // runs on early exit or consumer error too, so the descriptor is never left open
     await handle.close();
