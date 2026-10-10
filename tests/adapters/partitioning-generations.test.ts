@@ -198,6 +198,40 @@ describe('LokiPartitioningAdapter generations', () => {
     expect(reopened.getCollection('a')?.count()).toBe(3);
   });
 
+  it('still resolves the save when the cleanup cannot delete', async () => {
+    const inner = new LokiMemoryAdapter();
+    const db = await populated(inner);
+    const before = manifestOf(inner);
+    inner.deleteDatabase = () => Promise.reject(new Error('delete failed'));
+
+    db.getCollection('a')?.insert({ x: 3 });
+    await expect(db.saveDatabase()).resolves.toBeUndefined();
+
+    expect(inner.hashStore[keyOf(before.collections[0].files[0])]).toBeDefined();
+    const reopened = await Loki.open('g.db', { adapter: new LokiPartitioningAdapter(inner) });
+    expect(reopened.getCollection('a')?.count()).toBe(3);
+  });
+
+  it('reads the container once across historical saves', async () => {
+    const inner = new LokiMemoryAdapter();
+    const loads: string[] = [];
+    const load = inner.loadDatabase.bind(inner);
+    inner.loadDatabase = (key, callback) => {
+      loads.push(key);
+      return load(key, callback);
+    };
+    const db = new Loki('g.db', {
+      adapter: new LokiPartitioningAdapter(inner, { generations: false }),
+    });
+    db.addCollection('a').insert({ x: 1 });
+
+    await db.saveDatabase();
+    db.getCollection('a')?.insert({ x: 2 });
+    await db.saveDatabase();
+
+    expect(loads.filter((key) => key === 'g.db')).toHaveLength(1);
+  });
+
   it('reports a listed file that is missing', async () => {
     const inner = new LokiMemoryAdapter();
     await populated(inner);

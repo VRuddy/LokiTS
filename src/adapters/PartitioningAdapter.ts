@@ -254,8 +254,9 @@ export class LokiPartitioningAdapter {
   private async saveHistorical(dbname: string, dbref: Loki): Promise<void> {
     const committed = await this.committedManifest(dbname);
     await saveLegacy(this.adapter, dbname, dbref, this.legacyOptions(), committed !== undefined);
+    // the next save need not read the container; legacyKeys only serve a conversion, never made here
+    this.states.set(dbname, { generation: 0, collections: [], legacyKeys: [] });
     if (committed) {
-      this.states.delete(dbname);
       await deleteAll(this.adapter, manifestKeys(dbname, committed)).catch(() => {
         // the historical layout is complete; the generation files are only orphans
       });
