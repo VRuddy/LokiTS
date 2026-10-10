@@ -39,4 +39,8 @@ describe('adapter contracts', () => {
     expectTypeOf<Loki['close']>().returns.toEqualTypeOf<Promise<void>>();
     expectTypeOf<Loki['throttledSaveDrain']>().returns.toEqualTypeOf<Promise<boolean>>();
   });
+
+  it('types Loki.open', () => {
+    expectTypeOf(Loki.open).returns.toEqualTypeOf<Promise<Loki>>();
+  });
 });

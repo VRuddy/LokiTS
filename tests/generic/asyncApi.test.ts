@@ -186,3 +186,42 @@ describe('promise API', () => {
     await expect(db.saveDatabase()).rejects.toThrow('disk');
   });
 });
+
+describe('Loki.open', () => {
+  it('opens an existing database', async () => {
+    const adapter = new LokiMemoryAdapter();
+    const source = new Loki('o.db', { adapter });
+    source.addCollection('users').insert({ name: 'odin' });
+    await source.saveDatabase();
+
+    const db = await Loki.open('o.db', { adapter });
+
+    expect(db).toBeInstanceOf(Loki);
+    expect(db.getCollection('users')?.findOne({ name: 'odin' })).toBeTruthy();
+  });
+
+  it('opens a missing database as an empty one', async () => {
+    const db = await Loki.open('missing.db', { adapter: new LokiMemoryAdapter() });
+    expect(db.listCollections()).toEqual([]);
+  });
+
+  it('rejects on corrupted data', async () => {
+    const adapter = { loadDatabase: async () => '{corrupted' };
+    await expect(Loki.open('bad.db', { adapter })).rejects.toBeInstanceOf(SyntaxError);
+  });
+
+  it('ignores autoload, which it replaces', async () => {
+    let loads = 0;
+    const adapter = {
+      loadDatabase: async () => {
+        loads++;
+        return null;
+      },
+    };
+
+    await Loki.open('o.db', { adapter, autoload: true });
+    await flush(20);
+
+    expect(loads).toBe(1);
+  });
+});
