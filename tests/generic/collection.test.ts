@@ -16,6 +16,16 @@ describe('collection', () => {
     expect(result.name).toEqual('coll2');
   });
 
+  it('collection rename is a change for autosave', () => {
+    const db = new loki('test.db');
+    db.addCollection('coll1');
+    db.autosaveClearFlags();
+
+    db.renameCollection('coll1', 'coll2');
+
+    expect(db.autosaveDirty()).toBe(true);
+  });
+
   it('works', () => {
     // Breaking change : Collection est une classe ES, le sous-classage ES5
     // (`Collection.apply(this, args)`) n'est plus possible ; on utilise `extends`.

@@ -447,6 +447,8 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
 
     if (c) {
       c.name = newName;
+      // a rename changes what gets persisted: without this, autosave skips it
+      c.dirty = true;
     }
 
     return c;

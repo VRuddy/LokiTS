@@ -83,6 +83,45 @@ describe('LokiPartitioningAdapter generations', () => {
     expect(manifestOf(inner).collections[0].files).toEqual(bFiles);
   });
 
+  it('saves the documents of a collection renamed over a removed one', async () => {
+    const inner = new LokiMemoryAdapter();
+    const db = new Loki('g.db', { adapter: new LokiPartitioningAdapter(inner) });
+    db.addCollection('users').insert({ v: 'old' });
+    await db.saveDatabase();
+    db.addCollection('users_new').insert({ v: 'new' });
+    await db.saveDatabase();
+
+    db.removeCollection('users');
+    db.renameCollection('users_new', 'users');
+    await db.saveDatabase();
+
+    const reopened = await Loki.open('g.db', { adapter: new LokiPartitioningAdapter(inner) });
+    expect(
+      reopened
+        .getCollection('users')
+        ?.find()
+        .map((doc) => doc.v),
+    ).toEqual(['new']);
+  });
+
+  it('saves collections swapped through renames', async () => {
+    const inner = new LokiMemoryAdapter();
+    const db = await populated(inner);
+
+    db.renameCollection('a', 'tmp');
+    db.renameCollection('b', 'a');
+    db.renameCollection('tmp', 'b');
+    await db.saveDatabase();
+
+    const reopened = await Loki.open('g.db', { adapter: new LokiPartitioningAdapter(inner) });
+    const a = reopened.getCollection('a');
+    const b = reopened.getCollection('b');
+    expect(a?.find().map((doc) => doc.y)).toEqual([1]);
+    expect(a?.maxId).toBe(1);
+    expect(b?.find().map((doc) => doc.x)).toEqual([1, 2]);
+    expect(b?.maxId).toBe(2);
+  });
+
   it('survives a failure at every step of the commit', async () => {
     for (let failAt = 1; failAt <= 3; failAt++) {
       const inner = new FlakyMemoryAdapter();
