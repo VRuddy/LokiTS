@@ -72,6 +72,7 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
   options!: LokiConfigOptions;
   persistenceMethod!: string | null | undefined;
   persistenceAdapter!: AnyLokiAdapter | null;
+  /** @internal */
   declare saveQueue: SaveQueue;
   verbose!: boolean;
   ENV!: string;

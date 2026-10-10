@@ -17,8 +17,13 @@
 * fix: throttledSaveDrain triggered an extra save, and with `recursiveWait: false` answered `undefined` instead of a boolean
 * fix: close(callback) registered the callback as a permanent `close` listener, so it ran again on every later close; the callback now runs once, after `close` is emitted, and an exception it throws surfaces asynchronously
 * fix: an incremental adapter calling getLokiCopy twice produced two save outcomes
+* fix: a callback adapter that also returned an early-resolving promise lost its data (e.g. an IndexedDB adapter written as a promise chain); a method that declares its callback parameter is now followed by its callback only, while one that does not and returns a promise is followed by whichever of the promise and the callback settles first
+* fix: a save requested while a load runs is cancelled (rejected with an error whose `cause` is the load error) if that load fails, instead of overwriting storage with the in-memory state; saves requested afterwards run normally
+* fix: in reference mode (LokiPartitioningAdapter) a change made during an export lost its dirty flag, and the incremental rollback after a failed save broke when a collection was added or removed meanwhile
+* `Loki.open` ignores the `autoload` and `autoloadCallback` options and does not load when no adapter is configured
 * callbacks receive `undefined` on success (previously the raw adapter value), an unexpected load response is an Error, and `loaded` is emitted before the loadDatabase callback
-* autosave and autoload errors without a callback are emitted as `warning` events; a failed persistence call made without a callback and without awaiting is reported the same way instead of becoming an unhandled rejection (awaiting callers still get the rejection, and the warning is emitted too); the `warning` payload is typed `unknown`
+* autosave and autoload errors without a callback are emitted as `warning` events; a failed persistence call made without a callback is reported the same way instead of becoming an unhandled rejection (awaited or not, the warning is emitted; awaiting callers also get the rejection); one failed throttled save emits one warning per waiting caller that has no callback; a `warning` listener that throws is rethrown from a timer
+* BREAKING: the `warning` payload is typed `unknown` instead of `string`; TypeScript listeners typed `(msg: string) => …` no longer compile
 * legacy Jasmine/Karma specs ported to Vitest (`tests/`); Karma, PhantomJS, jshint, istanbul, uglify removed
 * fix: removeListener no longer removes the last listener when given one that was never registered
 * fix: throttledSaveDrain called its callback twice when throttledSaves was false
