@@ -187,6 +187,32 @@ describe('promise API', () => {
   });
 });
 
+describe('save requested during a failing load', () => {
+  it('is cancelled and never reaches the adapter', async () => {
+    const writes: string[] = [];
+    const adapter = {
+      loadDatabase: (_n: string, cb: (v: unknown) => void) => setTimeout(() => cb('{corrupt'), 5),
+      saveDatabase: (_n: string, data: string, cb: () => void) => {
+        writes.push(data);
+        cb();
+      },
+    };
+    const db = new Loki('y.db', { adapter });
+    const loading = db.loadDatabase().catch((err) => err);
+    db.addCollection('c').insert({ a: 1 });
+    const seen: (Error | undefined)[] = [];
+    await db.saveDatabase((err) => seen.push(err));
+
+    expect(await loading).toBeInstanceOf(SyntaxError);
+    expect(writes).toEqual([]);
+    expect(seen[0]?.message).toBe('save cancelled: the database failed to load');
+    expect(seen[0]?.cause).toBeInstanceOf(SyntaxError);
+
+    await db.saveDatabase();
+    expect(writes).toHaveLength(1);
+  });
+});
+
 describe('Loki.open', () => {
   it('opens an existing database', async () => {
     const adapter = new LokiMemoryAdapter();

@@ -131,19 +131,80 @@ describe('SaveQueue', () => {
     await Promise.all([first, second]);
   });
 
-  it('lock releases even when fn fails', async () => {
+  it('lock releases even when fn fails, and later saves run', async () => {
     const { run, pending } = controlledRun();
     const queue = new SaveQueue(run, () => true);
 
-    const locked = queue.lock(async () => {
-      throw new Error('bad json');
-    });
-    const save = queue.save();
+    await expect(
+      queue.lock(async () => {
+        throw new Error('bad json');
+      }),
+    ).rejects.toThrow('bad json');
+    expect(queue.busy).toBe(false);
 
-    await expect(locked).rejects.toThrow('bad json');
+    const save = queue.save();
     expect(pending).toHaveLength(1);
     pending[0].resolve();
     await save;
+  });
+
+  it('cancels the saves queued during a lock whose fn fails', async () => {
+    const { run, pending } = controlledRun();
+    const queue = new SaveQueue(run, () => true);
+    const loadError = new Error('bad json');
+    let fail!: () => void;
+
+    const locked = queue.lock(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          fail = () => reject(loadError);
+        }),
+    );
+    const first = queue.save();
+    const second = queue.save();
+    const rejections = Promise.all([first, second].map((save) => save.catch((err) => err)));
+
+    fail();
+    await expect(locked).rejects.toBe(loadError);
+    const [firstError, secondError] = await rejections;
+
+    expect(pending).toHaveLength(0);
+    for (const err of [firstError, secondError]) {
+      expect(err).toBeInstanceOf(Error);
+      expect(err.message).toBe('save cancelled: the database failed to load');
+      expect(err.cause).toBe(loadError);
+    }
+    expect(queue.busy).toBe(false);
+
+    const later = queue.save();
+    expect(pending).toHaveLength(1);
+    pending[0].resolve();
+    await later;
+  });
+
+  it('a lock failing keeps the save that was already queued behind a running save', async () => {
+    const { run, pending } = controlledRun();
+    const queue = new SaveQueue(run, () => true);
+    let fail!: () => void;
+
+    const running = queue.save();
+    const queued = queue.save();
+    const locked = queue.lock(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          fail = () => reject(new Error('bad json'));
+        }),
+    );
+    const cancelled = queue.save().catch((err) => err);
+
+    fail();
+    await expect(locked).rejects.toThrow('bad json');
+    expect((await cancelled).message).toBe('save cancelled: the database failed to load');
+
+    pending[0].resolve();
+    await running;
+    pending[1].resolve();
+    await expect(queued).resolves.toBeUndefined();
   });
 
   it('a lock taken during a save does not start the queued save before the first ends', async () => {

@@ -75,8 +75,12 @@ export class SaveQueue {
 
   async lock<T>(fn: () => Promise<T>): Promise<T> {
     this.locks++;
+    const queuedBefore = this.next?.length ?? 0;
     try {
       return await fn();
+    } catch (err) {
+      this.cancelQueuedSince(queuedBefore, err);
+      throw err;
     } finally {
       this.locks--;
       this.notifyWatchers();
@@ -91,6 +95,23 @@ export class SaveQueue {
     } catch (err) {
       return Promise.reject(err);
     }
+  }
+
+  // a save requested while the load ran must not overwrite storage with the state of a failed load
+  private cancelQueuedSince(count: number, cause: unknown): void {
+    if (!this.next) {
+      return;
+    }
+    const cancelled = this.next.splice(count);
+    if (this.next.length === 0) {
+      this.next = null;
+    }
+    const error = new Error('save cancelled: the database failed to load', { cause });
+    setTimeout(() => {
+      for (const waiter of cancelled) {
+        waiter.reject(error);
+      }
+    }, 1);
   }
 
   private start(waiters: Waiter[]): void {
