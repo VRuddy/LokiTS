@@ -85,7 +85,7 @@ export async function saveToAdapter(host: PersistenceHost): Promise<void> {
 }
 
 async function saveIncremental(host: PersistenceHost, adapter: object): Promise<void> {
-  let cachedDirty: [boolean, number[]][] | undefined;
+  let cachedDirty: Map<Collection, [boolean, number[]]> | undefined;
   let copyError: Error | undefined;
 
   // ignore autosave until the copy is taken: only then can the dirty flags be cleared
@@ -98,7 +98,7 @@ async function saveIncremental(host: PersistenceHost, adapter: object): Promise<
     }
     const lokiCopy = host.copy({ removeNonSerializable: true });
     // cleared before the save, so updates made meanwhile are saved next time
-    cachedDirty = host.collections.map((col) => [col.dirty, col.dirtyIds]);
+    cachedDirty = new Map(host.collections.map((col) => [col, [col.dirty, col.dirtyIds]]));
     for (const col of host.collections) {
       col.dirty = false;
       col.dirtyIds = [];
@@ -110,11 +110,14 @@ async function saveIncremental(host: PersistenceHost, adapter: object): Promise<
     await callAdapter(adapter, 'saveDatabase', [host.filename, getLokiCopy], 'write');
   } catch (err) {
     if (cachedDirty) {
-      const cached = cachedDirty;
-      host.collections.forEach((col, i) => {
-        col.dirty = col.dirty || cached[i][0];
-        col.dirtyIds = col.dirtyIds.concat(cached[i][1]);
-      });
+      // keyed by collection: some may have been added or removed during the save
+      for (const col of host.collections) {
+        const saved = cachedDirty.get(col);
+        if (saved) {
+          col.dirty = col.dirty || saved[0];
+          col.dirtyIds = col.dirtyIds.concat(saved[1]);
+        }
+      }
     }
     throw err;
   } finally {

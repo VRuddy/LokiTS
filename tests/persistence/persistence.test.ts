@@ -125,6 +125,37 @@ describe('saveToAdapter', () => {
     expect(coll.dirtyIds).toEqual([1]);
   });
 
+  it('incremental rollback survives a collection added during the save', async () => {
+    const adapter = new ManualIncrementalAdapter();
+    const db = dbWith(adapter);
+    const first = db.addCollection('first');
+    first.insert({ a: 1 });
+
+    const saving = saveToAdapter(db);
+    const added = db.addCollection('added');
+    added.insert({ b: 1 });
+    adapter.saves[0].respond(new Error('quota'));
+
+    await expect(saving).rejects.toThrow('quota');
+    expect(first.dirtyIds).toEqual([1]);
+    expect(added.dirtyIds).toEqual([1]);
+  });
+
+  it('incremental rollback survives a collection removed during the save', async () => {
+    const adapter = new ManualIncrementalAdapter();
+    const db = dbWith(adapter);
+    const first = db.addCollection('first');
+    const second = db.addCollection('second');
+    first.insert([{ a: 1 }, { a: 2 }]);
+    second.insert({ b: 1 });
+
+    const saving = saveToAdapter(db);
+    db.removeCollection('first');
+    adapter.saves[0].respond(new Error('quota'));
+
+    await expect(saving).rejects.toThrow('quota');
+    expect(second.dirtyIds).toEqual([1]);
+  });
   it('incremental mode rejects when getLokiCopy is called twice', async () => {
     const db = dbWith({
       mode: 'incremental',
