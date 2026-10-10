@@ -1,5 +1,5 @@
 import { callAdapter } from '../../persistence/adapter-bridge';
-import { missingFile } from './format';
+import { fileKey, missingFile } from './format';
 
 export interface PagingOptions {
   enabled: boolean;
@@ -25,9 +25,13 @@ function toPages(docs: object[], paging: PagingOptions): string[] {
   return pages;
 }
 
-/** Writes the documents one per line under `baseName` (then `baseName.1`, `.2`… for extra pages). */
+/**
+ * Writes the documents one per line under `baseName` (then `baseName.1`, `.2`… for extra pages),
+ * names relative to the database; returns those names.
+ */
 export async function writeCollection(
   inner: object,
+  dbname: string,
   baseName: string,
   docs: object[],
   paging: PagingOptions,
@@ -36,18 +40,23 @@ export async function writeCollection(
   const files: string[] = [];
   for (let page = 0; page < pages.length; page++) {
     const name = page === 0 ? baseName : `${baseName}.${page}`;
-    await callAdapter(inner, 'saveDatabase', [name, pages[page]], 'write');
+    await callAdapter(inner, 'saveDatabase', [fileKey(dbname, name), pages[page]], 'write');
     files.push(name);
   }
   return files;
 }
 
-export async function readCollection(inner: object, files: string[]): Promise<any[]> {
+export async function readCollection(
+  inner: object,
+  dbname: string,
+  files: string[],
+): Promise<any[]> {
   const docs: any[] = [];
   for (const file of files) {
-    const text = await callAdapter(inner, 'loadDatabase', [file], 'load');
+    const key = fileKey(dbname, file);
+    const text = await callAdapter(inner, 'loadDatabase', [key], 'load');
     if (text === null || text === undefined) {
-      throw missingFile(file);
+      throw missingFile(key);
     }
     for (const line of (text as string).split('\n')) {
       if (line !== '') {

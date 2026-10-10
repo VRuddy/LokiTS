@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -21,6 +21,9 @@ class FlakyMemoryAdapter extends LokiMemoryAdapter {
 const manifestOf = (inner: LokiMemoryAdapter, name = 'g.db') =>
   JSON.parse(inner.hashStore[name].value).lokiPartitions;
 
+/** Manifest file names are relative to the database name. */
+const keyOf = (file: string, dbname = 'g.db') => `${dbname}.${file}`;
+
 async function populated(inner: LokiMemoryAdapter) {
   const db = new Loki('g.db', { adapter: new LokiPartitioningAdapter(inner) });
   db.addCollection('a').insert([{ x: 1 }, { x: 2 }]);
@@ -39,8 +42,8 @@ describe('LokiPartitioningAdapter generations', () => {
     expect(manifest.generation).toBe(1);
     expect(manifest.collections.map((c: { name: string }) => c.name)).toEqual(['a', 'b']);
     for (const entry of manifest.collections) {
-      expect(entry.files[0]).toMatch(/^g\.db\.\d\.g1-[a-z0-9]+$/);
-      expect(inner.hashStore[entry.files[0]]).toBeDefined();
+      expect(entry.files[0]).toMatch(/^\d\.g1-[a-z0-9]+$/);
+      expect(inner.hashStore[keyOf(entry.files[0])]).toBeDefined();
     }
   });
 
@@ -66,7 +69,7 @@ describe('LokiPartitioningAdapter generations', () => {
     expect(after.generation).toBe(2);
     expect(after.collections[1].files).toEqual(before.collections[1].files);
     expect(after.collections[0].files[0]).toMatch(/\.g2-/);
-    expect(inner.hashStore[before.collections[0].files[0]]).toBeUndefined();
+    expect(inner.hashStore[keyOf(before.collections[0].files[0])]).toBeUndefined();
   });
 
   it('keeps files matched by name when a collection is removed', async () => {
@@ -143,11 +146,139 @@ describe('LokiPartitioningAdapter generations', () => {
   it('reports a listed file that is missing', async () => {
     const inner = new LokiMemoryAdapter();
     await populated(inner);
-    delete inner.hashStore[manifestOf(inner).collections[0].files[0]];
+    delete inner.hashStore[keyOf(manifestOf(inner).collections[0].files[0])];
 
     await expect(
       Loki.open('g.db', { adapter: new LokiPartitioningAdapter(inner) }),
     ).rejects.toThrow(/is missing/);
+  });
+
+  it('leaves the original intact when a copy of the database is saved', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'loki-generations-'));
+    try {
+      const original = join(root, 'original');
+      const copy = join(root, 'copy');
+      await mkdir(original);
+      const db = new Loki(join(original, 'app.db'), {
+        adapter: new LokiPartitioningAdapter(new LokiFsAdapter()),
+      });
+      db.addCollection('a').insert({ x: 1 });
+      db.addCollection('b').insert({ y: 1 });
+      await db.saveDatabase();
+      const files = (await readdir(original)).sort();
+      await cp(original, copy, { recursive: true });
+
+      const copied = await Loki.open(join(copy, 'app.db'), {
+        adapter: new LokiPartitioningAdapter(new LokiFsAdapter()),
+      });
+      copied.getCollection('a')?.insert({ x: 2 });
+      await copied.saveDatabase();
+
+      expect((await readdir(original)).sort()).toEqual(files);
+      const reopened = await Loki.open(join(original, 'app.db'), {
+        adapter: new LokiPartitioningAdapter(new LokiFsAdapter()),
+      });
+      expect(reopened.getCollection('a')?.count()).toBe(1);
+      expect(reopened.getCollection('b')?.count()).toBe(1);
+      const reopenedCopy = await Loki.open(join(copy, 'app.db'), {
+        adapter: new LokiPartitioningAdapter(new LokiFsAdapter()),
+      });
+      expect(reopenedCopy.getCollection('a')?.count()).toBe(2);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('loads a database whose directory was moved', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'loki-generations-'));
+    try {
+      const before = join(root, 'before');
+      const after = join(root, 'after');
+      await mkdir(before);
+      const db = new Loki(join(before, 'app.db'), {
+        adapter: new LokiPartitioningAdapter(new LokiFsAdapter()),
+      });
+      db.addCollection('a').insert([{ x: 1 }, { x: 2 }]);
+      await db.saveDatabase();
+
+      await rename(before, after);
+
+      const moved = await Loki.open(join(after, 'app.db'), {
+        adapter: new LokiPartitioningAdapter(new LokiFsAdapter()),
+      });
+      expect(moved.getCollection('a')?.count()).toBe(2);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a manifest listing anything but its own generation files, and deletes none', async () => {
+    for (const file of ['7', '../evil', 'g.db.7', '0.g1-abcd/../../7', 'g.db.0.g1-abcd']) {
+      const inner = new LokiMemoryAdapter();
+      await populated(inner);
+      const container = JSON.parse(inner.hashStore['g.db'].value);
+      container.lokiPartitions.collections[0].files = [file];
+      await inner.saveDatabase('g.db', JSON.stringify(container));
+      await inner.saveDatabase('g.db.7', 'user data');
+      await inner.saveDatabase('g.db.g.db.0.g1-abcd', 'user data');
+      const keys = Object.keys(inner.hashStore).sort();
+
+      await expect(
+        Loki.open('g.db', { adapter: new LokiPartitioningAdapter(inner) }),
+      ).rejects.toThrow(`lists an invalid file ${file}`);
+      const fresh = new Loki('g.db', { adapter: new LokiPartitioningAdapter(inner) });
+      fresh.addCollection('a');
+      await fresh.saveDatabase().catch(() => {});
+      await new LokiPartitioningAdapter(inner).deleteDatabase('g.db').catch(() => {});
+
+      expect(Object.keys(inner.hashStore).sort()).toEqual(keys);
+    }
+  });
+
+  it('rejects a malformed manifest', async () => {
+    const malformed: ((manifest: any) => void)[] = [
+      (m) => {
+        m.generation = -1;
+      },
+      (m) => {
+        m.generation = 1.5;
+      },
+      (m) => {
+        m.generation = '1';
+      },
+      (m) => {
+        m.collections.pop();
+      },
+      (m) => {
+        m.collections.push({ name: 'c', files: [] });
+      },
+      (m) => {
+        m.collections[0] = { name: 'a', files: '0.g1-abcd' };
+      },
+      (m) => {
+        m.collections[0] = { name: 1, files: [] };
+      },
+      (m) => {
+        m.collections[0] = null;
+      },
+      (m) => {
+        m.collections[0].files = [42];
+      },
+      (m) => {
+        m.collections.reverse();
+      },
+    ];
+    for (const change of malformed) {
+      const inner = new LokiMemoryAdapter();
+      await populated(inner);
+      const container = JSON.parse(inner.hashStore['g.db'].value);
+      change(container.lokiPartitions);
+      await inner.saveDatabase('g.db', JSON.stringify(container));
+
+      await expect(
+        Loki.open('g.db', { adapter: new LokiPartitioningAdapter(inner) }),
+      ).rejects.toThrow(/partition manifest/);
+    }
   });
 
   it('pages collections when paging is on', async () => {
@@ -212,7 +343,7 @@ describe('LokiPartitioningAdapter generations', () => {
       const committed = JSON.parse(await readFile(name, 'utf8')).lokiPartitions.collections[0]
         .files[0] as string;
       expect((await readdir(dir)).sort()).toEqual(
-        ['app.db', ...userFiles, committed.slice(dir.length + 1)].sort(),
+        ['app.db', ...userFiles, `app.db.${committed}`].sort(),
       );
 
       await db.deleteDatabase();

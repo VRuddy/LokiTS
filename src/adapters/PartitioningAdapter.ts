@@ -7,6 +7,7 @@ import {
   buildContainer,
   canListKeys,
   isGenerationKey,
+  manifestKeys,
   type PartitionEntry,
   type PartitionManifest,
   readManifest,
@@ -155,7 +156,7 @@ export class LokiPartitioningAdapter {
     }
     const dbref = new Loki(dbname);
     dbref.loadJSONObject(container);
-    const manifest = readManifest(container);
+    const manifest = readManifest(container, dbname);
 
     if (!manifest) {
       this.states.set(dbname, {
@@ -167,13 +168,11 @@ export class LokiPartitioningAdapter {
     }
 
     for (let index = 0; index < dbref.collections.length; index++) {
-      const entry = manifest.collections[index];
-      if (!entry || entry.name !== dbref.collections[index].name) {
-        throw new Error(
-          'LokiPartitioningAdapter: the partition manifest does not match the container',
-        );
-      }
-      dbref.collections[index].data = await readCollection(this.adapter, entry.files);
+      dbref.collections[index].data = await readCollection(
+        this.adapter,
+        dbname,
+        manifest.collections[index].files,
+      );
     }
     this.states.set(dbname, {
       generation: manifest.generation,
@@ -203,7 +202,8 @@ export class LokiPartitioningAdapter {
       }
       const files = await writeCollection(
         this.adapter,
-        `${dbname}.${index}.g${generation}-${suffix}`,
+        dbname,
+        `${index}.g${generation}-${suffix}`,
         collection.data,
         { enabled: this.options.paging === true, pageSize: this.options.pageSize as number },
       );
@@ -231,10 +231,7 @@ export class LokiPartitioningAdapter {
     await saveLegacy(this.adapter, dbname, dbref, this.legacyOptions(), committed !== undefined);
     if (committed) {
       this.states.delete(dbname);
-      await deleteAll(
-        this.adapter,
-        committed.flatMap((entry) => entry.files),
-      ).catch(() => {
+      await deleteAll(this.adapter, manifestKeys(dbname, committed)).catch(() => {
         // the historical layout is complete; the generation files are only orphans
       });
     }
@@ -247,12 +244,12 @@ export class LokiPartitioningAdapter {
       return state.generation > 0 ? state.collections : undefined;
     }
     const container = await this.readContainer(dbname);
-    return container ? readManifest(container)?.collections : undefined;
+    return container ? readManifest(container, dbname)?.collections : undefined;
   }
 
   private async readCommittedState(dbname: string): Promise<CommittedState> {
     const container = await this.readContainer(dbname);
-    const manifest = container ? readManifest(container) : undefined;
+    const manifest = container ? readManifest(container, dbname) : undefined;
     if (manifest) {
       return {
         generation: manifest.generation,
@@ -276,13 +273,11 @@ export class LokiPartitioningAdapter {
     manifest: PartitionManifest,
     previous: CommittedState,
   ): Promise<void> {
-    const kept = new Set(manifest.collections.flatMap((entry) => entry.files));
+    const kept = new Set(manifestKeys(dbname, manifest.collections));
     const obsolete = new Set<string>(previous.legacyKeys);
-    for (const entry of previous.collections) {
-      for (const file of entry.files) {
-        if (!kept.has(file)) {
-          obsolete.add(file);
-        }
+    for (const key of manifestKeys(dbname, previous.collections)) {
+      if (!kept.has(key)) {
+        obsolete.add(key);
       }
     }
     if (canListKeys(this.adapter)) {
@@ -301,11 +296,11 @@ export class LokiPartitioningAdapter {
     if (!container) {
       return;
     }
-    const manifest = readManifest(container);
+    const manifest = readManifest(container, dbname);
     // probed before the container goes: paged keys are discovered by reading the storage
     const keys = new Set<string>(
       manifest
-        ? manifest.collections.flatMap((entry) => entry.files)
+        ? manifestKeys(dbname, manifest.collections)
         : await legacyKeys(
             this.adapter,
             dbname,
