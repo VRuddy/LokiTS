@@ -38,11 +38,9 @@ export function readManifest(container: Record<string, unknown>): PartitionManif
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** Keys this adapter may have written for `dbname`: historical partitions, pages and generation files. */
-export function isPartitionKey(dbname: string, key: string): boolean {
-  return new RegExp(`^${escapeRegExp(dbname)}\\.\\d+(?:\\.g\\d+-[a-z0-9]+)?(?:\\.\\d+)?$`).test(
-    key,
-  );
+/** Generation files (`<db>.<n>.g<generation>-<suffix>`, optionally paged): the only names found by listing that are safe to delete. */
+export function isGenerationKey(dbname: string, key: string): boolean {
+  return new RegExp(`^${escapeRegExp(dbname)}\\.\\d+\\.g\\d+-[a-z0-9]+(?:\\.\\d+)?$`).test(key);
 }
 
 export const isLineStream = (adapter: unknown): adapter is LokiLineStreamAdapter =>

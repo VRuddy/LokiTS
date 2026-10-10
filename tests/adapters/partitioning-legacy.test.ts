@@ -1,5 +1,8 @@
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { Loki, LokiMemoryAdapter, LokiPartitioningAdapter } from '../../src';
+import { Loki, LokiFsAdapter, LokiMemoryAdapter, LokiPartitioningAdapter } from '../../src';
 
 function sampleDb(adapter: unknown) {
   const db = new Loki('p.db', { adapter: adapter as any });
@@ -60,5 +63,46 @@ describe('LokiPartitioningAdapter, historical format', () => {
     await expect(
       new LokiPartitioningAdapter(new LokiMemoryAdapter()).deleteDatabase('none.db'),
     ).resolves.toBeUndefined();
+  });
+
+  it('never deletes files it did not write', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'loki-partitioning-'));
+    try {
+      const name = join(dir, 'app.db');
+      const db = new Loki(name, { adapter: new LokiPartitioningAdapter(new LokiFsAdapter()) });
+      db.addCollection('users').insert({ name: 'odin' });
+      await db.saveDatabase();
+      for (const user of ['app.db.7', 'app.db.2024', 'app.db.5.0']) {
+        await writeFile(join(dir, user), 'user data');
+      }
+
+      await db.deleteDatabase();
+
+      expect((await readdir(dir)).sort()).toEqual(['app.db.2024', 'app.db.5.0', 'app.db.7']);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reports a missing non-paged partition explicitly', async () => {
+    const inner = new LokiMemoryAdapter();
+    await sampleDb(new LokiPartitioningAdapter(inner)).saveDatabase();
+    delete inner.hashStore['p.db.0'];
+
+    await expect(new LokiPartitioningAdapter(inner).loadDatabase('p.db')).rejects.toThrow(
+      'partition p.db.0 is missing',
+    );
+  });
+
+  it('round-trips a lines database without collections', async () => {
+    const inner = new LokiMemoryAdapter();
+    const options = { legacyFormat: 'lines' } as const;
+    await new Loki('p.db', { adapter: new LokiPartitioningAdapter(inner, options) }).saveDatabase();
+
+    const reopened = await Loki.open('p.db', {
+      adapter: new LokiPartitioningAdapter(inner, options),
+    });
+
+    expect(reopened.collections).toEqual([]);
   });
 });

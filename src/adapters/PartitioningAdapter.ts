@@ -2,7 +2,7 @@
 import { Loki } from '../core/Loki';
 import { callAdapter } from '../persistence/adapter-bridge';
 import { withAdapterCallback } from '../persistence/callbacks';
-import { canListKeys, isPartitionKey } from './partitioning/format';
+import { canListKeys, isGenerationKey } from './partitioning/format';
 import {
   type LegacyFormat,
   type LegacyOptions,
@@ -108,7 +108,7 @@ export class LokiPartitioningAdapter {
 
   private async readContainer(dbname: string): Promise<Record<string, any> | null | undefined> {
     const text = await callAdapter(this.adapter, 'loadDatabase', [dbname], 'load');
-    // falsy: partition 0 does not exist, so neither does the database
+    // falsy: the container does not exist, so neither does the database
     if (!text) {
       return text as null | undefined;
     }
@@ -149,7 +149,7 @@ export class LokiPartitioningAdapter {
     await callAdapter(this.adapter, 'deleteDatabase', [dbname], 'write');
     if (canListKeys(this.adapter)) {
       for (const key of await this.adapter.listKeys(`${dbname}.`)) {
-        if (isPartitionKey(dbname, key)) {
+        if (isGenerationKey(dbname, key)) {
           keys.add(key);
         }
       }
