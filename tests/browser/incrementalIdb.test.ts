@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import 'fake-indexeddb/auto';
+import { flush } from '../helpers/fake-adapters';
 import { IncrementalIndexedDBAdapter } from '../helpers/incremental-idb';
 import { loki } from '../helpers/loki';
 
@@ -94,7 +95,7 @@ describe('IncrementalIndexedDBAdapter', () => {
   // it('stores data in the expected format', function() {
   // })
   // NOTE: Because PhantomJS doesn't support IndexedDB, I moved tests to spec/incrementalidb.html
-  it('handles dirtyIds during save properly', () => {
+  it('handles dirtyIds during save properly', async () => {
     var adapter = new IncrementalIndexedDBAdapter('tests');
     var db = new loki('test.db', { adapter: adapter });
     var col1 = db.addCollection('test_collection');
@@ -126,6 +127,7 @@ describe('IncrementalIndexedDBAdapter', () => {
     expect(col1.dirtyIds).toEqual([]);
     expect(col1.dirty).toBe(false);
     callCallback(new Error('foo'));
+    await flush();
     expect(col1.dirtyIds).toEqual(dirty);
     expect(col1.dirty).toBe(true);
     expect(col2.dirty).toBe(false);
@@ -140,6 +142,7 @@ describe('IncrementalIndexedDBAdapter', () => {
     expect(col2.dirty).toBe(true);
     expect(col2.dirtyIds).toEqual([doc5.$loki]);
     callCallback(new Error('foo'));
+    await flush();
     expect(col1.dirtyIds).toEqual([doc4.$loki].concat(dirty));
     expect(col1.dirty).toBe(true);
     expect(col2.dirtyIds).toEqual([doc5.$loki]);
@@ -152,6 +155,7 @@ describe('IncrementalIndexedDBAdapter', () => {
     col1.insert(doc6);
     expect(col1.dirtyIds).toEqual([doc6.$loki]);
     callCallback();
+    await flush();
     expect(col1.dirtyIds).toEqual([doc6.$loki]);
   });
 });

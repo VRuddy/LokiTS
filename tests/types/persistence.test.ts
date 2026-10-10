@@ -30,4 +30,13 @@ describe('adapter contracts', () => {
       new Loki('types.db', { adapter });
     }
   });
+
+  it('returns promises from the persistence methods', () => {
+    // return types only: calling the methods would hit the default fs adapter
+    expectTypeOf<Loki['saveDatabase']>().returns.toEqualTypeOf<Promise<void>>();
+    expectTypeOf<Loki['loadDatabase']>().returns.toEqualTypeOf<Promise<void>>();
+    expectTypeOf<Loki['deleteDatabase']>().returns.toEqualTypeOf<Promise<void>>();
+    expectTypeOf<Loki['close']>().returns.toEqualTypeOf<Promise<void>>();
+    expectTypeOf<Loki['throttledSaveDrain']>().returns.toEqualTypeOf<Promise<boolean>>();
+  });
 });

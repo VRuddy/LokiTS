@@ -3,6 +3,14 @@ import { LokiFsAdapter } from '../adapters/FsAdapter';
 import { LokiLocalStorageAdapter } from '../adapters/LocalStorageAdapter';
 import { LokiMemoryAdapter } from '../adapters/MemoryAdapter';
 import { LokiEventEmitter } from '../events/EventEmitter';
+import { invoke, settle } from '../persistence/callbacks';
+import {
+  deleteFromAdapter,
+  loadFromAdapter,
+  type PersistenceHost,
+  saveToAdapter,
+} from '../persistence/persistence';
+import { type DrainOptions, SaveQueue } from '../persistence/save-queue';
 import type { AnyLokiAdapter } from '../types/adapter';
 import { deepFreeze } from '../utils/freeze';
 import { Utils } from '../utils/helpers';
@@ -48,7 +56,7 @@ export interface LokiEvents {
   flushChanges: [];
   close: [];
   changes: [];
-  warning: [message: string];
+  warning: [warning: unknown];
   [event: string]: unknown[];
 }
 
@@ -64,8 +72,7 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
   options!: LokiConfigOptions;
   persistenceMethod!: string | null | undefined;
   persistenceAdapter!: AnyLokiAdapter | null;
-  throttledSavePending!: boolean;
-  throttledCallbacks!: any[];
+  declare saveQueue: SaveQueue;
   verbose!: boolean;
   ENV!: string;
   /** set by loadJSONObject */
@@ -106,9 +113,15 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
     // retain reference to optional (non-serializable) persistenceAdapter 'instance'
     this.persistenceAdapter = null;
 
-    // flags used to throttle saves
-    this.throttledSavePending = false;
-    this.throttledCallbacks = [];
+    // non-enumerable: the queue must stay out of the serialized database
+    Object.defineProperty(this, 'saveQueue', {
+      value: new SaveQueue(
+        () => saveToAdapter(this as PersistenceHost),
+        () => this.throttledSaves,
+      ),
+      writable: true,
+      configurable: true,
+    });
 
     // enable console output if verbose flag is set (disabled by default)
     this.verbose =
@@ -165,6 +178,11 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
     this.configureOptions(options, true);
 
     this.on('init', this.clearChanges);
+  }
+
+  /** True while a save runs or a load holds saves back. */
+  get throttledSavePending(): boolean {
+    return this.saveQueue.busy;
   }
 
   // experimental support for browserify's abstract syntax scan to pick up dependency of indexed adapter.
@@ -469,9 +487,6 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
       case 'constraints':
       case 'ttl':
         return null;
-      case 'throttledSavePending':
-      case 'throttledCallbacks':
-        return undefined;
       case 'lokiConsoleWrapper':
         return null;
       default:
@@ -1074,26 +1089,25 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
   }
 
   /**
-   * Emits the close event. In autosave scenarios, if the database is dirty, this will save and disable timer.
-   * Does not actually destroy the db.
-   *
-   * @param callback - (Optional) if supplied will be registered with close event before emitting.
+   * Emits `close`. With autosave on and unsaved changes, saves first; the promise resolves after that save.
    */
-  close(callback?: (err?: any) => void): void {
-    // for autosave scenarios, we will let close perform final save (if dirty)
-    // For web use, you might call from window.onbeforeunload to shutdown database, saving pending changes
+  close(callback?: (err?: any) => void): Promise<void> {
+    let saving: Promise<void> = Promise.resolve();
+    // for web use, call it from window.onbeforeunload to save pending changes
     if (this.autosave) {
       this.autosaveDisable();
       if (this.autosaveDirty()) {
-        this.saveDatabase(callback);
+        saving = this.saveDatabase(callback);
         callback = undefined;
       }
     }
 
-    if (callback) {
-      this.on('close', callback);
-    }
     this.emit('close');
+    // called once: it used to be registered as a permanent 'close' listener
+    if (callback) {
+      invoke(callback);
+    }
+    return saving;
   }
 
   /**-------------------------+
@@ -1149,381 +1163,96 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
   }
 
   /**
-   * Wait for throttledSaves to complete and invoke your callback when drained or duration is met.
-   *
-   * @param callback - callback to fire when save queue is drained, it is passed a sucess parameter value
-   * @param options - configuration options
-   * @param options.recursiveWait - (default: true) if after queue is drained, another save was kicked off, wait for it
-   * @param options.recursiveWaitLimit - (default: false) limit our recursive waiting to a duration
-   * @param options.recursiveWaitLimitDelay - (default: 2000) cutoff in ms to stop recursively re-draining
+   * Resolves once no save is pending (`true`), or `false` if `recursiveWaitLimitDuration` is exceeded.
+   * The options object can be passed as first argument.
    */
   throttledSaveDrain(
-    callback: (success: boolean) => void,
-    options?: {
-      recursiveWait?: boolean;
-      recursiveWaitLimit?: boolean;
-      recursiveWaitLimitDuration?: number;
-      started?: number;
-      [key: string]: any;
-    },
-  ): void {
-    const now = new Date().getTime();
+    callback?: ((success: boolean) => void) | DrainOptions,
+    options?: DrainOptions,
+  ): Promise<boolean> {
+    if (typeof callback === 'object' && callback !== null) {
+      options = callback;
+      callback = undefined;
+    }
+    const done = callback as ((success: boolean) => void) | undefined;
 
-    if (!this.throttledSaves) {
-      callback(true);
-      return;
-    }
-
-    options = options || {};
-    if (!Object.hasOwn(options, 'recursiveWait')) {
-      options.recursiveWait = true;
-    }
-    if (!Object.hasOwn(options, 'recursiveWaitLimit')) {
-      options.recursiveWaitLimit = false;
-    }
-    if (!Object.hasOwn(options, 'recursiveWaitLimitDuration')) {
-      options.recursiveWaitLimitDuration = 2000;
-    }
-    if (!Object.hasOwn(options, 'started')) {
-      options.started = new Date().getTime();
-    }
-    const opts = options;
-
-    // if save is pending
-    if (this.throttledSaves && this.throttledSavePending) {
-      // if we want to wait until we are in a state where there are no pending saves at all
-      if (opts.recursiveWait) {
-        // queue the following meta callback for when it completes
-        this.throttledCallbacks.push(() => {
-          // if there is now another save pending...
-          if (this.throttledSavePending) {
-            // if we wish to wait only so long and we have exceeded limit of our waiting, callback with false success value
-            if (
-              opts.recursiveWaitLimit &&
-              now - (opts.started as number) > (opts.recursiveWaitLimitDuration as number)
-            ) {
-              callback(false);
-              return;
-            }
-            // it must be ok to wait on next queue drain
-            this.throttledSaveDrain(callback, opts);
-            return;
-          }
-          // no pending saves so callback with true success
-          callback(true);
-          return;
-        });
+    if (!this.throttledSaves || !this.saveQueue.busy) {
+      if (done) {
+        done(true);
       }
-      // just notify when current queue is depleted
-      else {
-        this.throttledCallbacks.push(callback);
-        return;
-      }
-    }
-    // no save pending, just callback
-    else {
-      callback(true);
-    }
-  }
-
-  /**
-   * Internal load logic, decoupled from throttling/contention logic
-   *
-   * @param options - not currently used (remove or allow overrides?)
-   * @param callback - (Optional) user supplied async callback / error handler
-   */
-  loadDatabaseInternal(options?: any, callback?: (err?: any) => void): void {
-    const cFun =
-      callback ||
-      ((err?: any, _data?: any) => {
-        if (err) {
-          throw err;
-        }
-      });
-    const self = this;
-
-    // the persistenceAdapter should be present if all is ok, but check to be sure.
-    if (this.persistenceAdapter !== null) {
-      this.persistenceAdapter.loadDatabase(
-        this.filename,
-        function loadDatabaseCallback(dbString: any) {
-          if (typeof dbString === 'string') {
-            let parseSuccess = false;
-            try {
-              self.loadJSON(dbString, options || {});
-              parseSuccess = true;
-            } catch (err) {
-              cFun(err);
-            }
-            if (parseSuccess) {
-              cFun(null);
-              self.emit('loaded', `database ${self.filename} loaded`);
-            }
-          } else {
-            // falsy result means new database
-            if (!dbString) {
-              cFun(null);
-              self.emit('loaded', `empty database ${self.filename} loaded`);
-              return;
-            }
-
-            // instanceof error means load faulted
-            if (dbString instanceof Error) {
-              cFun(dbString);
-              return;
-            }
-
-            // if adapter has returned an js object (other than null or error) attempt to load from JSON object
-            if (typeof dbString === 'object') {
-              self.loadJSONObject(dbString, options || {});
-              cFun(null); // return null on success
-              self.emit('loaded', `database ${self.filename} loaded`);
-              return;
-            }
-
-            cFun(`unexpected adapter response : ${dbString}`);
-          }
-        },
-      );
-    } else {
-      cFun(new Error('persistenceAdapter not configured'));
-    }
-  }
-
-  /**
-   * Handles manually loading from file system, local storage, or adapter (such as indexeddb)
-   *    This method utilizes loki configuration options (if provided) to determine which
-   *    persistence method to use, or environment detection (if configuration was not provided).
-   *    To avoid contention with any throttledSaves, we will drain the save queue first.
-   *
-   * If you are configured with autosave, you do not need to call this method yourself.
-   *
-   * @param options - if throttling saves and loads, this controls how we drain save queue before loading
-   * @param options.recursiveWait - (default: true) wait recursively until no saves are queued
-   * @param options.recursiveWaitLimit - (default: false) limit our recursive waiting to a duration
-   * @param options.recursiveWaitLimitDelay - (default: 2000) cutoff in ms to stop recursively re-draining
-   * @param callback - (Optional) user supplied async callback / error handler
-   * @example
-   * db.loadDatabase({}, function(err) {
-   *   if (err) {
-   *     console.log("error : " + err);
-   *   }
-   *   else {
-   *     console.log("database loaded.");
-   *   }
-   * });
-   */
-  loadDatabase(options?: any, callback?: (err?: any) => void): void {
-    // if throttling disabled, just call internal
-    if (!this.throttledSaves) {
-      this.loadDatabaseInternal(options, callback);
-      return;
+      return Promise.resolve(true);
     }
 
-    // try to drain any pending saves in the queue to lock it for loading
-    this.throttledSaveDrain((success) => {
-      if (success) {
-        // pause/throttle saving until loading is done
-        this.throttledSavePending = true;
-
-        this.loadDatabaseInternal(options, (err) => {
-          // now that we are finished loading, if no saves were throttled, disable flag
-          if (this.throttledCallbacks.length === 0) {
-            this.throttledSavePending = false;
-          }
-          // if saves requests came in while loading, kick off new save to kick off resume saves
-          else {
-            this.saveDatabase();
-          }
-
-          if (typeof callback === 'function') {
-            callback(err);
-          }
-        });
-        return;
-      }
-      if (typeof callback === 'function') {
-        callback(new Error('Unable to pause save throttling long enough to read database'));
-      }
-    }, options);
-  }
-
-  /**
-   * Internal save logic, decoupled from save throttling logic
-   */
-  saveDatabaseInternal(callback?: (err?: any) => void): void {
-    const cFun =
-      callback ||
-      ((err?: any) => {
-        if (err) {
-          throw err;
-        }
-        return;
-      });
-    const self = this;
-
-    // the persistenceAdapter should be present if all is ok, but check to be sure.
-    if (!this.persistenceAdapter) {
-      cFun(new Error('persistenceAdapter not configured'));
-      return;
+    const drained = this.saveQueue.drain(options);
+    if (!done) {
+      return drained;
     }
-
-    const adapter = this.persistenceAdapter as any;
-
-    // run incremental, reference, or normal mode adapters, depending on what's available
-    if (adapter.mode === 'incremental') {
-      let cachedDirty: [boolean, number[]][] | undefined;
-      // ignore autosave until we copy loki (only then we can clear dirty flags,
-      // but if we don't do it now, autosave will be triggered a lot unnecessarily)
-      this.ignoreAutosave = true;
-      adapter.saveDatabase(
-        this.filename,
-        function getLokiCopy() {
-          self.ignoreAutosave = false;
-          if (cachedDirty) {
-            cFun(new Error('adapter error - getLokiCopy called more than once'));
-            return;
-          }
-          const lokiCopy = self.copy({ removeNonSerializable: true });
-
-          // remember and clear dirty ids -- we must do it before the save so that if
-          // and update occurs between here and callback, it will get saved later
-          cachedDirty = self.collections.map((collection) => {
-            return [collection.dirty, (collection as any).dirtyIds] as [boolean, number[]];
-          });
-          self.collections.forEach((col) => {
-            col.dirty = false;
-            (col as any).dirtyIds = [];
-          });
-          return lokiCopy;
-        },
-        function exportDatabaseCallback(err?: any) {
-          self.ignoreAutosave = false;
-          if (err && cachedDirty) {
-            const cd = cachedDirty;
-            // roll back dirty IDs to be saved later
-            self.collections.forEach((col, i) => {
-              const cached = cd[i];
-              col.dirty = col.dirty || cached[0];
-              (col as any).dirtyIds = (col as any).dirtyIds.concat(cached[1]);
-            });
-          }
-          cFun(err);
-        },
-      );
-    } else if (adapter.mode === 'reference' && typeof adapter.exportDatabase === 'function') {
-      // TODO: dirty should be cleared here
-      // filename may seem redundant but loadDatabase will need to expect this same filename
-      adapter.exportDatabase(
-        this.filename,
-        this.copy({ removeNonSerializable: true }),
-        function exportDatabaseCallback(err?: any) {
-          self.autosaveClearFlags();
-          cFun(err);
-        },
-      );
-    }
-    // otherwise just pass the serialized database to adapter
-    else {
-      // persistenceAdapter might be asynchronous, so we must clear `dirty` immediately
-      // or autosave won't work if an update occurs between here and the callback
-      // TODO: This should be stored and rolled back in case of DB save failure
-      this.autosaveClearFlags();
-      adapter.saveDatabase(
-        this.filename,
-        this.serialize(),
-        function saveDatabasecallback(err?: any) {
-          cFun(err);
-        },
-      );
-    }
-  }
-
-  /**
-   * Handles manually saving to file system, local storage, or adapter (such as indexeddb)
-   *    This method utilizes loki configuration options (if provided) to determine which
-   *    persistence method to use, or environment detection (if configuration was not provided).
-   *
-   * If you are configured with autosave, you do not need to call this method yourself.
-   *
-   * @param callback - (Optional) user supplied async callback / error handler
-   * @example
-   * db.saveDatabase(function(err) {
-   *   if (err) {
-   *     console.log("error : " + err);
-   *   }
-   *   else {
-   *     console.log("database saved.");
-   *   }
-   * });
-   */
-  saveDatabase(callback?: (err?: any) => void): void {
-    if (!this.throttledSaves) {
-      this.saveDatabaseInternal(callback);
-      return;
-    }
-
-    if (this.throttledSavePending) {
-      this.throttledCallbacks.push(callback);
-      return;
-    }
-
-    const localCallbacks = this.throttledCallbacks;
-    this.throttledCallbacks = [];
-    localCallbacks.unshift(callback);
-    this.throttledSavePending = true;
-    this.saveDatabaseInternal((err) => {
-      this.throttledSavePending = false;
-      localCallbacks.forEach((pcb) => {
-        if (typeof pcb === 'function') {
-          // Queue the callbacks so we first finish this method execution
-          setTimeout(() => {
-            pcb(err);
-          }, 1);
-        }
-      });
-
-      // since this is called async, future requests may have come in, if so.. kick off next save
-      if (this.throttledCallbacks.length > 0) {
-        this.saveDatabase();
-      }
+    return drained.then((success) => {
+      invoke(done, success);
+      return success;
     });
   }
 
+  /** @deprecated Loads without waiting for pending saves. Use {@link Loki#loadDatabase}. */
+  loadDatabaseInternal(options?: any, callback?: (err?: any) => void): Promise<void> {
+    return this.settleOrWarn(loadFromAdapter(this as PersistenceHost, options), callback);
+  }
+
   /**
-   * Handles deleting a database from file system, local
-   *    storage, or adapter (indexeddb)
-   *    This method utilizes loki configuration options (if provided) to determine which
-   *    persistence method to use, or environment detection (if configuration was not provided).
+   * Loads the database through the configured adapter, after pending saves; saves requested while
+   * loading run afterwards. `options` also carries the drain options and per-collection `inflate`.
    *
-   * @param callback - (Optional) user supplied async callback / error handler
+   * @example
+   * await db.loadDatabase();
    */
-  deleteDatabase(options?: any, callback?: (err?: any) => void): void {
-    let cFun: (err?: any, data?: any) => void =
-      callback ||
-      ((err?: any, _data?: any) => {
-        if (err) {
-          throw err;
-        }
-      });
+  loadDatabase(options?: any, callback?: (err?: any) => void): Promise<void> {
+    return this.settleOrWarn(this.loadAfterSaves(options), callback);
+  }
 
-    // we aren't even using options, so we will support syntax where
-    // callback is passed as first and only argument
-    if (typeof options === 'function' && !callback) {
-      cFun = options;
+  private async loadAfterSaves(options?: any): Promise<void> {
+    if (!this.throttledSaves) {
+      return loadFromAdapter(this as PersistenceHost, options);
     }
+    // when idle, the adapter is called in the same tick, as before
+    if (this.saveQueue.busy) {
+      const drained = await this.saveQueue.drain(options);
+      if (!drained || this.saveQueue.busy) {
+        throw new Error('Unable to pause save throttling long enough to read database');
+      }
+    }
+    await this.saveQueue.lock(() => loadFromAdapter(this as PersistenceHost, options));
+  }
 
-    // the persistenceAdapter should be present if all is ok, but check to be sure.
-    if (this.persistenceAdapter !== null) {
-      (this.persistenceAdapter as any).deleteDatabase(
-        this.filename,
-        function deleteDatabaseCallback(err?: any) {
-          cFun(err);
-        },
-      );
-    } else {
-      cFun(new Error('persistenceAdapter not configured'));
+  /** @deprecated Saves without going through the save queue. Use {@link Loki#saveDatabase}. */
+  saveDatabaseInternal(callback?: (err?: any) => void): Promise<void> {
+    return this.settleOrWarn(saveToAdapter(this as PersistenceHost), callback);
+  }
+
+  /**
+   * Saves through the configured adapter. Saves requested while one runs are folded into a single
+   * follow-up save (unless `throttledSaves` is false).
+   *
+   * @example
+   * await db.saveDatabase();
+   */
+  saveDatabase(callback?: (err?: any) => void): Promise<void> {
+    return this.settleOrWarn(this.saveQueue.save(), callback);
+  }
+
+  /** Deletes the database through the adapter. Also accepts `deleteDatabase(callback)`. */
+  deleteDatabase(options?: any, callback?: (err?: any) => void): Promise<void> {
+    const done = typeof options === 'function' && !callback ? options : callback;
+    return this.settleOrWarn(deleteFromAdapter(this as PersistenceHost), done);
+  }
+
+  // a failure nobody handles (no callback, promise not awaited) must not crash the process,
+  // as the original swallowed it: report it as a warning, awaiting callers still get the rejection
+  private settleOrWarn(promise: Promise<void>, callback?: (err?: any) => void): Promise<void> {
+    if (callback) {
+      return settle(promise, callback);
     }
+    promise.catch((err) => this.emit('warning', err));
+    return promise;
   }
 
   /**
@@ -1562,19 +1291,14 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
     this.autosave = true;
 
     let delay = 5000;
-    const self = this;
 
     if (typeof this.autosaveInterval !== 'undefined' && this.autosaveInterval !== null) {
       delay = this.autosaveInterval;
     }
 
-    this.autosaveHandle = setInterval(function autosaveHandleInterval() {
-      // use of dirty flag will need to be hierarchical since mods are done at collection level with no visibility of 'db'
-      // so next step will be to implement collection level dirty flags set on insert/update/remove
-      // along with loki level isdirty() function which iterates all collections to see if any are dirty
-
-      if (self.autosaveDirty() && !self.ignoreAutosave) {
-        self.saveDatabase(callback);
+    this.autosaveHandle = setInterval(() => {
+      if (this.autosaveDirty() && !this.ignoreAutosave) {
+        this.saveDatabase(callback);
       }
     }, delay);
   }

@@ -23,6 +23,8 @@ describe('save queue', () => {
     expect(adapter.saves).toHaveLength(1);
 
     adapter.saves[0].respond();
+    // the follow-up save starts once the first one has settled, a microtask later
+    await flush(1);
     expect(adapter.saves).toHaveLength(2);
     await flush();
     expect(calls).toEqual(['first:']);

@@ -55,6 +55,7 @@ export type {
   DynamicViewSortCriteria,
   DynamicViewSortCriteriaSimple,
 } from './indexing/DynamicView';
+export type { DrainOptions } from './persistence/save-queue';
 export type { ResultsetDataOptions, SimpleSortOptions, TransformStep } from './query/Resultset';
 export type {
   AnyLokiAdapter,

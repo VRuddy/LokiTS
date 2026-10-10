@@ -403,7 +403,7 @@ describe('testing adapter functionality', () => {
         another.update(ai);
 
         // and save again to ensure lastsave is different on for db container and that one collection
-        db.saveDatabase((err) => {
+        db.saveDatabase(async (err) => {
           // db container always gets saved since we currently have no 'dirty' flag on it to check
           expect(mem.hashStore['sandbox.db'].savecount).toEqual(2);
           // we didn't change this
@@ -427,7 +427,7 @@ describe('testing adapter functionality', () => {
 
           // ok now lets load from it
           var db2 = new loki('sandbox.db', { adapter: adapter });
-          db2.loadDatabase();
+          await db2.loadDatabase();
 
           expect(db2.collections.length).toEqual(2);
           expect(db2.collections[0].data.length).toEqual(4);
@@ -437,7 +437,7 @@ describe('testing adapter functionality', () => {
 
           // verify empty collection saves with paging
           db.addCollection('extracoll');
-          db.saveDatabase((err) => {
+          db.saveDatabase(async (err) => {
             expect(mem.hashStore['sandbox.db'].savecount).toEqual(4);
             expect(mem.hashStore['sandbox.db.0.0'].savecount).toEqual(2);
             expect(mem.hashStore['sandbox.db.0.1'].savecount).toEqual(2);
@@ -448,7 +448,7 @@ describe('testing adapter functionality', () => {
 
             // now verify loading empty collection works with paging codepath
             db2 = new loki('sandbox.db', { adapter: adapter });
-            db2.loadDatabase();
+            await db2.loadDatabase();
 
             expect(db2.collections.length).toEqual(3);
             expect(db2.collections[0].data.length).toEqual(4);
@@ -857,9 +857,9 @@ describe('testing changesAPI', () => {
       items.update(tyrfing);
 
       // memory adapter is synchronous so i will not bother with callbacks
-      db.saveDatabase((err) => {
+      db.saveDatabase(async (err) => {
         var db2 = new loki('sandbox.db', { adapter: mem });
-        db2.loadDatabase({});
+        await db2.loadDatabase({});
 
         var result = JSON.parse(db2.serializeChanges());
         expect(result.length).toEqual(5);
