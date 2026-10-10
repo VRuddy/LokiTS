@@ -634,3 +634,50 @@ describe('LokiPartitioningAdapter generations', () => {
     expect(JSON.parse(inner.hashStore['g.db'].value).lokiPartitions).toBeUndefined();
   });
 });
+
+/** Memory adapter with line streams that records how it was used. */
+class LineMemoryAdapter extends LokiMemoryAdapter {
+  streamedWrites = 0;
+  streamedReads = 0;
+
+  async readLines(name: string): Promise<AsyncIterable<string> | null> {
+    const stored = this.hashStore[name];
+    if (!stored) {
+      return null;
+    }
+    this.streamedReads++;
+    const lines = stored.value.split('\n');
+    return (async function* () {
+      yield* lines;
+    })();
+  }
+
+  async writeLines(name: string, lines: AsyncIterable<string>): Promise<void> {
+    this.streamedWrites++;
+    let text = '';
+    for await (const line of lines) {
+      text += `${line}\n`;
+    }
+    await this.saveDatabase(name, text);
+  }
+}
+
+describe('LokiPartitioningAdapter line streams', () => {
+  it('streams each collection through the inner adapter', async () => {
+    const inner = new LineMemoryAdapter();
+    const db = new Loki('s.db', {
+      adapter: new LokiPartitioningAdapter(inner, { paging: true, pageSize: 10 }),
+    });
+    db.addCollection('a').insert(Array.from({ length: 50 }, (_, x) => ({ x })));
+    await db.saveDatabase();
+
+    expect(inner.streamedWrites).toBe(1);
+    expect(
+      JSON.parse(inner.hashStore['s.db'].value).lokiPartitions.collections[0].files,
+    ).toHaveLength(1);
+
+    const reopened = await Loki.open('s.db', { adapter: new LokiPartitioningAdapter(inner) });
+    expect(inner.streamedReads).toBe(1);
+    expect(reopened.getCollection('a')?.count()).toBe(50);
+  });
+});
