@@ -180,7 +180,17 @@ describe('promise API', () => {
   });
 
   it('routes autosave errors to the warning event, once per failed save', async () => {
-    const db = new Loki('a.db', { adapter: failing, autosave: true, autosaveInterval: 5 });
+    // a save already started when the first warning disables autosave still fails and warns: the
+    // number of ticks depends on timer scheduling, so compare warnings with the saves actually attempted
+    let attempts = 0;
+    const adapter = {
+      ...failing,
+      saveDatabase: async () => {
+        attempts++;
+        throw new Error('disk');
+      },
+    };
+    const db = new Loki('a.db', { adapter, autosave: true, autosaveInterval: 5 });
     const warnings: unknown[] = [];
     const first = new Promise<void>((resolve) =>
       db.on('warning', (warning) => {
@@ -192,8 +202,17 @@ describe('promise API', () => {
     db.addCollection('c').insert({ a: 1 });
 
     await first;
+    // no new save starts once autosave is off, so the warnings catch up with the attempts
+    for (let i = 0; i < 100 && warnings.length < attempts; i++) {
+      await flush(10);
+    }
     await flush(20);
-    expect(warnings.map((warning) => (warning as Error).message)).toEqual(['disk']);
+
+    expect(attempts).toBeGreaterThanOrEqual(1);
+    expect(warnings).toHaveLength(attempts);
+    expect(warnings.map((warning) => (warning as Error).message)).toEqual(
+      Array(attempts).fill('disk'),
+    );
   });
 
   it('routes autoload errors without a callback to the warning event, once', async () => {
