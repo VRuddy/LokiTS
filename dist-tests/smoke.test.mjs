@@ -1,7 +1,10 @@
 // Smoke test du build publié (dist/), exécutable sur Node 20+ sans Vitest :
 //   pnpm build && node --test dist-tests/smoke.test.mjs
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 
 const require = createRequire(import.meta.url);
@@ -42,5 +45,16 @@ for (const [format, load] of [
     const copy = new Loki('roundtrip.db');
     copy.loadJSON(db.serialize());
     assert.equal(copy.getCollection('c').count(), 1);
+  });
+
+  test(`${format} : persistance fichier (adaptateur fs par défaut)`, async () => {
+    const { loki: Loki } = await load();
+    const file = join(mkdtempSync(join(tmpdir(), 'loki-smoke-')), 'p.db');
+    const db = new Loki(file);
+    db.addCollection('c').insert({ a: 1 });
+    await new Promise((resolve) => db.saveDatabase(resolve));
+    const db2 = new Loki(file);
+    await new Promise((resolve) => db2.loadDatabase({}, resolve));
+    assert.equal(db2.getCollection('c').count(), 1);
   });
 }

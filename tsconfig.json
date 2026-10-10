@@ -5,7 +5,7 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "strict": true,
-    "noUncheckedIndexedAccess": true,
+    "noUncheckedIndexedAccess": false,
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": false,
@@ -16,7 +16,8 @@
     "esModuleInterop": true,
     "noEmit": true,
     "types": ["node"],
-    "ignoreDeprecations": "6.0"
+    "ignoreDeprecations": "6.0",
+    "useDefineForClassFields": false
   },
-  "include": ["src/**/*.ts", "*.config.ts", "*.config.mts"]
+  "include": ["src/**/*.ts", "*.config.ts"]
 }

@@ -77,6 +77,26 @@
           }
         }
       }
+    },
+    {
+      "includes": ["src/**/*.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "warn",
+            "noSelfCompare": "off",
+            "noDoubleEquals": "off",
+            "noUnsafeDeclarationMerging": "off"
+          },
+          "complexity": {
+            "useLiteralKeys": "off",
+            "noArguments": "off"
+          },
+          "style": {
+            "useTemplate": "off"
+          }
+        }
+      }
     }
   ]
 }

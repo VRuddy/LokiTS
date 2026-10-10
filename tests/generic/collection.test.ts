@@ -18,13 +18,13 @@ describe('collection', () => {
   });
 
   it('works', () => {
-    function SubclassedCollection() {
-      loki.Collection.apply(this, Array.prototype.slice.call(arguments));
+    // Breaking change : Collection est une classe ES, le sous-classage ES5
+    // (`Collection.apply(this, args)`) n'est plus possible ; on utilise `extends`.
+    class SubclassedCollection extends loki.Collection {
+      extendedMethod() {
+        return this.name.toUpperCase();
+      }
     }
-    SubclassedCollection.prototype = new loki.Collection();
-    SubclassedCollection.prototype.extendedMethod = function () {
-      return this.name.toUpperCase();
-    };
     var coll = new SubclassedCollection('users', {});
 
     expect(coll != null).toBe(true);

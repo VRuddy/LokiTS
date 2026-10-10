@@ -1,6 +1,5 @@
-import { createRequire } from 'node:module';
+import Loki from '../../src/index';
 
-const require = createRequire(import.meta.url);
-
-// Le moteur hérité est un fichier UMD/CommonJS : on le charge via le require natif de Node.
-export const loki: any = require('../../src/lokijs.js');
+// Les specs historiques utilisent `loki` comme un objet dynamique (statiques, `new loki(...)`).
+// biome-ignore lint/suspicious/noExplicitAny: typage permissif tant que les specs ne sont pas resserrées
+export const loki: any = Loki;
