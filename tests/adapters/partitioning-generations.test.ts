@@ -143,6 +143,61 @@ describe('LokiPartitioningAdapter generations', () => {
     }
   });
 
+  it('serializes overlapping saves of the same database', async () => {
+    const inner = new LokiMemoryAdapter({ asyncResponses: true, asyncTimeout: 5 });
+    const db = new Loki('g.db', {
+      adapter: new LokiPartitioningAdapter(inner),
+      throttledSaves: false,
+    });
+    db.addCollection('a').insert({ x: 1 });
+    db.addCollection('b').insert({ y: 1 });
+    await db.saveDatabase();
+
+    db.getCollection('a')?.insert({ x: 2 });
+    db.getCollection('b')?.insert({ y: 2 });
+    const first = db.saveDatabase();
+    db.getCollection('a')?.insert({ x: 3 });
+    const second = db.saveDatabase();
+    await Promise.all([first, second]);
+
+    const reopened = await Loki.open('g.db', { adapter: new LokiPartitioningAdapter(inner) });
+    expect(reopened.getCollection('a')?.count()).toBe(3);
+    expect(reopened.getCollection('b')?.count()).toBe(2);
+  });
+
+  it('serializes a save and a delete of the same database', async () => {
+    const inner = new LokiMemoryAdapter({ asyncResponses: true, asyncTimeout: 5 });
+    const db = new Loki('g.db', {
+      adapter: new LokiPartitioningAdapter(inner),
+      throttledSaves: false,
+    });
+    db.addCollection('a').insert({ x: 1 });
+    await db.saveDatabase();
+
+    db.getCollection('a')?.insert({ x: 2 });
+    const saving = db.saveDatabase();
+    const deleting = db.deleteDatabase();
+    await Promise.all([saving, deleting]);
+
+    expect(Object.keys(inner.hashStore)).toEqual([]);
+  });
+
+  it('runs the next save after a failed one', async () => {
+    const inner = new FlakyMemoryAdapter();
+    const db = await populated(inner);
+    db.getCollection('a')?.insert({ x: 3 });
+    inner.writes = 0;
+    inner.failAt = 1;
+
+    const failing = db.saveDatabase();
+    const next = db.saveDatabase();
+
+    await expect(failing).rejects.toThrow('write 1 failed');
+    await expect(next).resolves.toBeUndefined();
+    const reopened = await Loki.open('g.db', { adapter: new LokiPartitioningAdapter(inner) });
+    expect(reopened.getCollection('a')?.count()).toBe(3);
+  });
+
   it('reports a listed file that is missing', async () => {
     const inner = new LokiMemoryAdapter();
     await populated(inner);

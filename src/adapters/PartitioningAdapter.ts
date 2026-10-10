@@ -66,9 +66,12 @@ export class LokiPartitioningAdapter {
   options!: LokiPartitioningAdapterOptions;
   /** What is committed for each database, so a save knows which files to keep and which to clean up. */
   declare states: Map<string, CommittedState>;
+  /** The last queued save or delete of each database: the next one waits for it. */
+  declare queues: Map<string, Promise<void>>;
 
   constructor(adapter?: any, options?: LokiPartitioningAdapterOptions) {
     this.states = new Map();
+    this.queues = new Map();
     this.mode = 'reference';
     this.adapter = null;
     this.options = options || {};
@@ -117,12 +120,34 @@ export class LokiPartitioningAdapter {
 
   /** Reference mode: writes the dirty collections under a new generation, then commits by replacing the container. */
   exportDatabase(dbname: string, dbref: Loki, callback?: (err?: any) => void): Promise<void> {
-    return withAdapterCallback(this.save(dbname, dbref), callback, 'write') as Promise<void>;
+    return withAdapterCallback(
+      this.serialized(dbname, () => this.save(dbname, dbref)),
+      callback,
+      'write',
+    ) as Promise<void>;
   }
 
   /** Deletes the container first (the database is then gone for a loader), then every partition. */
   deleteDatabase(dbname: string, callback?: (err?: any) => void): Promise<void> {
-    return withAdapterCallback(this.remove(dbname), callback, 'write') as Promise<void>;
+    return withAdapterCallback(
+      this.serialized(dbname, () => this.remove(dbname)),
+      callback,
+      'write',
+    ) as Promise<void>;
+  }
+
+  /** Overlapping saves would start from the same committed state, and one would delete files the other commits. */
+  private serialized(dbname: string, operation: () => Promise<void>): Promise<void> {
+    const result = (this.queues.get(dbname) ?? Promise.resolve()).then(operation);
+    // a failure must not block the operations queued after it
+    const tail = result.catch(() => {});
+    this.queues.set(dbname, tail);
+    void tail.then(() => {
+      if (this.queues.get(dbname) === tail) {
+        this.queues.delete(dbname);
+      }
+    });
+    return result;
   }
 
   private legacyOptions(): LegacyOptions {
