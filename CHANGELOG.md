@@ -10,6 +10,7 @@
 * fix: removeListener no longer removes the last listener when given one that was never registered
 * fix: throttledSaveDrain called its callback twice when throttledSaves was false
 * fix: Collection.ensureIdAsync threw because `this` was not bound inside the async callback
+* fix: stages and commitLog were shared by every collection in the process; each collection now has its own
 * BREAKING: core classes are now ES classes; ES5-style subclassing via `Collection.apply(this, args)` / `X.prototype = new Collection()` no longer works, use `class extends`
 * supported runtime: Node >= 20 (CI also covers 22, 24, 26); development requires Node >= 22.12
 

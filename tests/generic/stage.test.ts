@@ -49,4 +49,20 @@ describe('Staging and commits', () => {
     expect(directors.get(cohen.$loki).name).toEqual('Joel and Ethan Cohen');
     expect(directors.commitLog.filter((entry) => entry.message === message).length).toBe(1);
   });
+
+  it('keeps stages and the commit log separate per collection', () => {
+    const stage = directors.getStage('draft');
+    stage.name = 'in progress';
+
+    expect(films.stages.draft).toBeUndefined();
+    expect(films.commitLog).not.toBe(directors.commitLog);
+  });
+
+  it('does not serialize stages or the commit log', () => {
+    directors.getStage('draft');
+    const json = JSON.parse(db.serialize());
+
+    expect(Object.keys(json.collections[0])).not.toContain('stages');
+    expect(Object.keys(json.collections[0])).not.toContain('commitLog');
+  });
 });

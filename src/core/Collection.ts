@@ -291,6 +291,10 @@ export class Collection<T extends object = any> extends LokiEventEmitter<Collect
 
     this.DynamicViews = [];
 
+    // per-collection and non-enumerable, so they stay out of the serialized database
+    Object.defineProperty(this, 'stages', { value: {}, writable: true, configurable: true });
+    Object.defineProperty(this, 'commitLog', { value: [], writable: true, configurable: true });
+
     // events
     this.events = {
       insert: [],
@@ -2120,14 +2124,3 @@ Collection.prototype.lokiConsoleWrapper = {
   warn: () => {},
   error: () => {},
 };
-
-/**
- * stages: a map of uniquely identified 'stages', which hold copies of objects to be
- * manipulated without affecting the data in the original collection
- */
-Collection.prototype.stages = {};
-
-/**
- * a collection of objects recording the changes applied through a commmitStage
- */
-Collection.prototype.commitLog = [];
