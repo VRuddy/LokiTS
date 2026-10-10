@@ -496,7 +496,11 @@ describe('LokiPartitioningAdapter', () => {
       },
     };
     const db = new Loki('p.db', {
-      adapter: new LokiPartitioningAdapter(inner, { paging: true, pageSize: 50 }),
+      adapter: new LokiPartitioningAdapter(inner, {
+        paging: true,
+        pageSize: 50,
+        generations: false,
+      }),
     });
     for (const name of ['a', 'b']) {
       const coll = db.addCollection(name);

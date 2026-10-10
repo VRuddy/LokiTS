@@ -14,14 +14,16 @@ function sampleDb(adapter: unknown) {
 describe('LokiPartitioningAdapter, historical format', () => {
   it('still writes the historical keys', async () => {
     const inner = new LokiMemoryAdapter();
-    await sampleDb(new LokiPartitioningAdapter(inner)).saveDatabase();
+    await sampleDb(new LokiPartitioningAdapter(inner, { generations: false })).saveDatabase();
 
     expect(Object.keys(inner.hashStore).sort()).toEqual(['p.db', 'p.db.0', 'p.db.1']);
   });
 
   it('writes and reads the fs-structured format (one document per line)', async () => {
     const inner = new LokiMemoryAdapter();
-    const db = sampleDb(new LokiPartitioningAdapter(inner, { legacyFormat: 'lines' }));
+    const db = sampleDb(
+      new LokiPartitioningAdapter(inner, { legacyFormat: 'lines', generations: false }),
+    );
     await db.saveDatabase();
 
     const users = db.getCollection('users')?.data ?? [];
@@ -30,7 +32,7 @@ describe('LokiPartitioningAdapter, historical format', () => {
     );
     expect(inner.hashStore['p.db'].value.endsWith('\n')).toBe(true);
     const reopened = await Loki.open('p.db', {
-      adapter: new LokiPartitioningAdapter(inner, { legacyFormat: 'lines' }),
+      adapter: new LokiPartitioningAdapter(inner, { legacyFormat: 'lines', generations: false }),
     });
     expect(reopened.getCollection('users')?.count()).toBe(2);
     expect(reopened.getCollection('empty')?.count()).toBe(0);
@@ -38,7 +40,7 @@ describe('LokiPartitioningAdapter, historical format', () => {
 
   it('deletes the container then the partitions', async () => {
     const inner = new LokiMemoryAdapter();
-    const adapter = new LokiPartitioningAdapter(inner);
+    const adapter = new LokiPartitioningAdapter(inner, { generations: false });
     const db = sampleDb(adapter);
     await db.saveDatabase();
 
@@ -49,7 +51,11 @@ describe('LokiPartitioningAdapter, historical format', () => {
 
   it('deletes paged partitions', async () => {
     const inner = new LokiMemoryAdapter();
-    const adapter = new LokiPartitioningAdapter(inner, { paging: true, pageSize: 20 });
+    const adapter = new LokiPartitioningAdapter(inner, {
+      paging: true,
+      pageSize: 20,
+      generations: false,
+    });
     const db = sampleDb(adapter);
     await db.saveDatabase();
     expect(Object.keys(inner.hashStore).length).toBeGreaterThan(3);
@@ -69,7 +75,9 @@ describe('LokiPartitioningAdapter, historical format', () => {
     const dir = await mkdtemp(join(tmpdir(), 'loki-partitioning-'));
     try {
       const name = join(dir, 'app.db');
-      const db = new Loki(name, { adapter: new LokiPartitioningAdapter(new LokiFsAdapter()) });
+      const db = new Loki(name, {
+        adapter: new LokiPartitioningAdapter(new LokiFsAdapter(), { generations: false }),
+      });
       db.addCollection('users').insert({ name: 'odin' });
       await db.saveDatabase();
       for (const user of ['app.db.7', 'app.db.2024', 'app.db.5.0']) {
@@ -86,7 +94,7 @@ describe('LokiPartitioningAdapter, historical format', () => {
 
   it('reports a missing non-paged partition explicitly', async () => {
     const inner = new LokiMemoryAdapter();
-    await sampleDb(new LokiPartitioningAdapter(inner)).saveDatabase();
+    await sampleDb(new LokiPartitioningAdapter(inner, { generations: false })).saveDatabase();
     delete inner.hashStore['p.db.0'];
 
     await expect(new LokiPartitioningAdapter(inner).loadDatabase('p.db')).rejects.toThrow(
@@ -96,7 +104,7 @@ describe('LokiPartitioningAdapter, historical format', () => {
 
   it('round-trips a lines database without collections', async () => {
     const inner = new LokiMemoryAdapter();
-    const options = { legacyFormat: 'lines' } as const;
+    const options = { legacyFormat: 'lines', generations: false } as const;
     await new Loki('p.db', { adapter: new LokiPartitioningAdapter(inner, options) }).saveDatabase();
 
     const reopened = await Loki.open('p.db', {

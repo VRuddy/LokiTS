@@ -301,7 +301,7 @@ describe('testing adapter functionality', () => {
   it('verify partioning adapter works', () =>
     new Promise<void>((done) => {
       var mem = new loki.LokiMemoryAdapter();
-      var adapter = new loki.LokiPartitioningAdapter(mem);
+      var adapter = new loki.LokiPartitioningAdapter(mem, { generations: false });
 
       var db = new loki('sandbox.db', { adapter: adapter });
 
@@ -366,7 +366,11 @@ describe('testing adapter functionality', () => {
       // we will use an exceptionally low page size (64bytes) to test with small dataset.
       // every object will serialize to over 64bytes so that is not a hard limit but when
       // we exceed that we will stop adding to page (so for this test 1 doc per page)
-      var adapter = new loki.LokiPartitioningAdapter(mem, { paging: true, pageSize: 64 });
+      var adapter = new loki.LokiPartitioningAdapter(mem, {
+        paging: true,
+        pageSize: 64,
+        generations: false,
+      });
 
       var db = new loki('sandbox.db', { adapter: adapter });
 
@@ -678,7 +682,7 @@ describe('async adapter tests', () => {
   it('verify throttled async works as expected', () =>
     new Promise<void>((done) => {
       var mem = new loki.LokiMemoryAdapter({ asyncResponses: true, asyncTimeout: 50 });
-      var adapter = new loki.LokiPartitioningAdapter(mem);
+      var adapter = new loki.LokiPartitioningAdapter(mem, { generations: false });
       var throttled = true;
       var db = new loki('sandbox.db', { adapter: adapter, throttledSaves: throttled });
 
