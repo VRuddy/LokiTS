@@ -47,7 +47,6 @@ export interface CollectionOptions {
   cloneMethod?: CloneMethod;
   ttl?: number;
   ttlInterval?: number;
-  // biome-ignore lint/suspicious/noExplicitAny: other (loader provided) options are tolerated
   [key: string]: any;
 }
 
@@ -62,7 +61,6 @@ export interface CheckIndexOptions {
 export interface CollectionChange {
   name: string;
   operation: string;
-  // biome-ignore lint/suspicious/noExplicitAny: change payload is a (delta) clone of a document
   obj: any;
 }
 
@@ -88,7 +86,6 @@ export interface CollectionChange {
  * @param options.ttlInterval - time interval for clearing out 'aged' documents; not set by default.
  * @see {@link Loki#addCollection} for normal creation of collections
  */
-// biome-ignore lint/suspicious/noExplicitAny: documents are dynamic by nature
 export class Collection<T extends object = any> extends LokiEventEmitter {
   // the name of the collection
   name!: string;
@@ -101,17 +98,12 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
     exact: Record<string, ExactIndex>;
   };
   uniqueNames!: string[];
-  // biome-ignore lint/suspicious/noExplicitAny: transform steps are free-form
   transforms!: Record<string, any>;
   objType!: string;
   dirty!: boolean;
-  // biome-ignore lint/suspicious/noExplicitAny: cached copies of internal data
   cachedIndex!: any;
-  // biome-ignore lint/suspicious/noExplicitAny: cached copies of internal data
   cachedBinaryIndex!: any;
-  // biome-ignore lint/suspicious/noExplicitAny: cached copies of internal data
   cachedData!: any;
-  // biome-ignore lint/suspicious/noExplicitAny: set by transactions only
   cachedDirtyIds?: any;
   /** set by the owning database (incremental persistence mode) */
   isIncremental?: boolean;
@@ -128,19 +120,14 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
   ttl!: {
     age: number | null;
     ttlInterval: number | null | undefined;
-    // biome-ignore lint/suspicious/noExplicitAny: timer handle (platform dependent)
     daemon: any;
   };
   maxId!: number;
-  // biome-ignore lint/suspicious/noExplicitAny: dynamic views of any document type
   DynamicViews!: DynamicView<any>[];
   changes!: CollectionChange[];
   dirtyIds!: number[];
-  // biome-ignore lint/suspicious/noExplicitAny: shape of Object.observe callback changes
   observerCallback!: (changes: any[]) => void;
-  // biome-ignore lint/suspicious/noExplicitAny: delta of dynamic objects
   getChangeDelta!: (obj: any, old: any) => any;
-  // biome-ignore lint/suspicious/noExplicitAny: delta of dynamic objects
   getObjectDelta!: (oldObject: any, newObject: any) => any;
   flushChanges!: () => void;
   getChanges!: () => CollectionChange[];
@@ -152,9 +139,7 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
     warn: (...args: unknown[]) => void;
     error: (...args: unknown[]) => void;
   };
-  // biome-ignore lint/suspicious/noExplicitAny: staged copies of documents
   stages!: Record<string, Record<string, any>>;
-  // biome-ignore lint/suspicious/noExplicitAny: commit log entries
   commitLog!: any[];
 
   constructor(name: string, options?: CollectionOptions) {
@@ -317,24 +302,19 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
       this.ensureIndex(indices[idx]);
     }
 
-    // biome-ignore lint/suspicious/noExplicitAny: shape of Object.observe callback changes
     function observerCallback(changes: any[]) {
-      // biome-ignore lint/suspicious/noExplicitAny: Set of observed objects (or array fallback)
       const changedObjects: any = typeof Set === 'function' ? new Set() : [];
 
       if (!changedObjects.add)
-        // biome-ignore lint/suspicious/noExplicitAny: array based Set fallback
         changedObjects.add = function (this: any, object: any) {
           if (this.indexOf(object) === -1) this.push(object);
           return this;
         };
 
-      // biome-ignore lint/suspicious/noExplicitAny: observed change record
       changes.forEach((change: any) => {
         changedObjects.add(change.object);
       });
 
-      // biome-ignore lint/suspicious/noExplicitAny: observed document
       changedObjects.forEach((object: any) => {
         if (!hasOwn.call(object, '$loki')) {
           self.removeAutoUpdateObserver(object);
@@ -349,7 +329,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
     this.observerCallback = observerCallback;
 
     //Compare changed object (which is a forced clone) with existing object and return the delta
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic objects
     function getChangeDelta(obj: any, old: any) {
       if (old) {
         return getObjectDelta(old, obj);
@@ -359,12 +338,10 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
 
     this.getChangeDelta = getChangeDelta;
 
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic objects
     function getObjectDelta(oldObject: any, newObject: any): any {
       const propertyNames =
         newObject !== null && typeof newObject === 'object' ? Object.keys(newObject) : null;
       if (propertyNames?.length && ['string', 'boolean', 'number'].indexOf(typeof newObject) < 0) {
-        // biome-ignore lint/suspicious/noExplicitAny: delta is a dynamic object
         const delta: any = {};
         for (let i = 0; i < propertyNames.length; i++) {
           const propertyName = propertyNames[i];
@@ -381,8 +358,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
                 oldObject[propertyName],
                 newObject[propertyName],
               );
-              // biome-ignore lint/suspicious/noDoubleEquals: original quirk, `!= {}` is always true
-              // biome-ignore lint/suspicious/noExplicitAny: see above
               if (typeof propertyDelta !== 'undefined' && propertyDelta != ({} as any)) {
                 delta[propertyName] = propertyDelta;
               }
@@ -414,7 +389,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
       }
     };
 
-    // biome-ignore lint/suspicious/noExplicitAny: deleted document
     this.on('delete', function deleteCallback(obj: any) {
       if (!self.disableChangesApi) {
         self.createChange(self.name, 'R', obj);
@@ -431,7 +405,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
   /*
    * For ChangeAPI default to clone entire object, for delta changes create object with only differences (+ $loki and meta)
    */
-  // biome-ignore lint/suspicious/noExplicitAny: dynamic objects
   createChange(name: string, op: string, obj: any, old?: any) {
     this.changes.push({
       name: name,
@@ -443,7 +416,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
     });
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: object or array of objects to give meta to
   insertMeta(obj: any) {
     let len: number;
     let idx: number;
@@ -477,7 +449,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
     obj.meta.revision = 0;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: dynamic object
   updateMeta(obj: any, _objFrozen?: any): any {
     if (this.disableMeta || !obj) {
       return obj;
@@ -491,32 +462,26 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
     return obj;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: dynamic object
   createInsertChange(obj: any) {
     this.createChange(this.name, 'I', obj);
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: dynamic objects
   createUpdateChange(obj: any, old: any) {
     this.createChange(this.name, 'U', obj, old);
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: dynamic object
   insertMetaWithChange(obj: any) {
     this.insertMeta(obj);
     this.createInsertChange(obj);
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: dynamic objects
   updateMetaWithChange(obj: any, old: any, objFrozen?: any): any {
     obj = this.updateMeta(obj, objFrozen);
     this.createUpdateChange(obj, old);
     return obj;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: dynamic object
   addAutoUpdateObserver(object: any) {
-    // biome-ignore lint/suspicious/noExplicitAny: Object.observe is not in lib typings
     const ObjectAny = Object as any;
     if (!this.autoupdate || typeof ObjectAny.observe !== 'function') return;
 
@@ -529,9 +494,7 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
     ]);
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: dynamic object
   removeAutoUpdateObserver(object: any) {
-    // biome-ignore lint/suspicious/noExplicitAny: Object.observe is not in lib typings
     const ObjectAny = Object as any;
     if (!this.autoupdate || typeof ObjectAny.observe !== 'function') return;
 
@@ -554,7 +517,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    *
    * var results = users.chain('progeny').data();
    */
-  // biome-ignore lint/suspicious/noExplicitAny: transform steps are free-form
   addTransform(name: string, transform: any) {
     if (Object.hasOwn(this.transforms, name)) {
       throw new Error('a transform by that name already exists');
@@ -576,7 +538,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param name - name to associate with transform
    * @param transform - a transformation object to save into collection
    */
-  // biome-ignore lint/suspicious/noExplicitAny: transform steps are free-form
   setTransform(name: string, transform: any) {
     this.transforms[name] = transform;
   }
@@ -589,12 +550,9 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
     delete this.transforms[name];
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: template is a free-form object
   byExample(template: any) {
     let k: string;
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic object
     let obj: any;
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic query objects
     const query: any[] = [];
     for (k in template) {
       if (!Object.hasOwn(template, k)) continue;
@@ -607,12 +565,10 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
     };
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: template is a free-form object
   findObject(template: any) {
     return this.findOne(this.byExample(template));
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: template is a free-form object
   findObjects(template: any) {
     return this.find(this.byExample(template));
   }
@@ -625,7 +581,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
     const age = this.ttl.age as number;
     return function ttlDaemon() {
       const now = Date.now();
-      // biome-ignore lint/suspicious/noExplicitAny: dynamic document
       const toRemove = collection.chain().where(function daemonFilter(member: any) {
         const timestamp = member.meta.updated || member.meta.created;
         const diff = now - timestamp;
@@ -719,9 +674,7 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
     this.binaryIndices[property] = index;
 
     const wrappedComparer = ((prop: string, data: LokiDocument<T>[]) => {
-      // biome-ignore lint/suspicious/noExplicitAny: dynamic property values
       let val1: any;
-      // biome-ignore lint/suspicious/noExplicitAny: dynamic property values
       let val2: any;
       const propPath = ~prop.indexOf('.') ? prop.split('.') : false;
       return (a: number, b: number) => {
@@ -729,9 +682,7 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
           val1 = Utils.getIn(data[a], propPath, true);
           val2 = Utils.getIn(data[b], propPath, true);
         } else {
-          // biome-ignore lint/suspicious/noExplicitAny: dynamic property access
           val1 = (data[a] as any)[prop];
-          // biome-ignore lint/suspicious/noExplicitAny: dynamic property access
           val2 = (data[b] as any)[prop];
         }
 
@@ -921,7 +872,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
   getBinaryIndexValues(property: string) {
     let idx: number;
     const idxvals = this.binaryIndices[property].values;
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic property values
     const result: any[] = [];
 
     for (idx = 0; idx < idxvals.length; idx++) {
@@ -1000,7 +950,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param query - (optional) query object to count results of
    * @returns number of documents in the collection
    */
-  // biome-ignore lint/suspicious/noExplicitAny: query values are dynamic
   count(query?: LokiQuery<any>) {
     if (!query) {
       return this.data.length;
@@ -1051,7 +1000,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    *
    * var results = pview.data();
    **/
-  // biome-ignore lint/suspicious/noExplicitAny: options are defined by DynamicView
   addDynamicView(name: string, options?: any): DynamicView<T> {
     const dv = new DynamicView<T>(this, name, options);
     this.DynamicViews.push(dv);
@@ -1089,12 +1037,7 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param filterObject - 'mongo-like' query object (or deprecated filterFunction mode)
    * @param updateFunction - update function to run against filtered documents
    */
-  findAndUpdate(
-    // biome-ignore lint/suspicious/noExplicitAny: query object or filter function
-    filterObject: any,
-    // biome-ignore lint/suspicious/noExplicitAny: update callback over dynamic documents
-    updateFunction: (obj: any) => any,
-  ) {
+  findAndUpdate(filterObject: any, updateFunction: (obj: any) => any) {
     if (typeof filterObject === 'function') {
       this.updateWhere(filterObject, updateFunction);
     } else {
@@ -1107,7 +1050,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    *
    * @param filterObject - 'mongo-like' query object
    */
-  // biome-ignore lint/suspicious/noExplicitAny: query values are dynamic
   findAndRemove(filterObject: LokiQuery<any>) {
     this.chain().find(filterObject).remove();
   }
@@ -1129,7 +1071,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * // alternatively, insert array of documents
    * users.insert([{ name: 'Thor', age: 35}, { name: 'Loki', age: 30}]);
    */
-  // biome-ignore lint/suspicious/noExplicitAny: returns a document, an array of documents or undefined
   insert(doc: T | T[], overrideAdaptiveIndices?: boolean): any {
     if (!Array.isArray(doc)) {
       return this.insertOne(doc);
@@ -1198,7 +1139,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
     }
 
     // if configured to clone, do so now... otherwise just use same obj reference
-    // biome-ignore lint/suspicious/noExplicitAny: the document gains $loki and meta while inserted
     let obj: any = this.cloneObjects ? clone(doc, this.cloneMethod) : doc;
     if (!this.disableFreeze) {
       obj = unFreeze(obj);
@@ -1289,7 +1229,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * Updates an object and notifies collection that the document has changed.
    * @param doc - document to update within the collection
    */
-  // biome-ignore lint/suspicious/noExplicitAny: returns the updated document (or nothing for batches)
   update(doc: any): any {
     let adaptiveBatchOverride: boolean | undefined;
     let k: number;
@@ -1333,7 +1272,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
       this.startTransaction();
       const arr = this.get(doc.$loki, true) as [LokiDocument<T>, number] | null;
       let oldInternal: LokiDocument<T>; // ref to existing obj
-      // biome-ignore lint/suspicious/noExplicitAny: ref to new internal obj
       let newInternal: any; // ref to new internal obj
       let position: number;
 
@@ -1401,7 +1339,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
         deepFreeze(newInternal);
       }
 
-      // biome-ignore lint/suspicious/noExplicitAny: returned document
       let returnObj: any;
 
       // if cloning is enabled, emit 'update' event and return with clone of new object
@@ -1424,7 +1361,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
   /**
    * Add object to collection
    */
-  // biome-ignore lint/suspicious/noExplicitAny: the document gains $loki and meta while added
   add(obj: any): any {
     // if parameter isn't object exit with throw
     if ('object' !== typeof obj) {
@@ -1508,15 +1444,9 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param filterFunction - filter function whose results will execute update
    * @param updateFunction - update function to run against filtered documents
    */
-  updateWhere(
-    // biome-ignore lint/suspicious/noExplicitAny: user filter over dynamic documents
-    filterFunction: (obj: any) => boolean,
-    // biome-ignore lint/suspicious/noExplicitAny: user update over dynamic documents
-    updateFunction: (obj: any) => any,
-  ) {
+  updateWhere(filterFunction: (obj: any) => boolean, updateFunction: (obj: any) => any) {
     const results = this.where(filterFunction);
     let i = 0;
-    // biome-ignore lint/suspicious/noExplicitAny: updated document
     let obj: any;
     try {
       for (i; i < results.length; i++) {
@@ -1534,7 +1464,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * For 'mongo-like' querying you should migrate to [findAndRemove()]{@link Collection#findAndRemove}.
    * @param query - query object to filter on
    */
-  // biome-ignore lint/suspicious/noExplicitAny: filter function or query object
   removeWhere(query: any) {
     let list: LokiDocument<T>[];
     if (typeof query === 'function') {
@@ -1563,7 +1492,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
     const uic = Object.keys(this.constraints.unique).length;
     const adaptiveOverride =
       this.adaptiveBinaryIndices && Object.keys(this.binaryIndices).length > 0;
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic document
     let doc: any;
 
     try {
@@ -1668,7 +1596,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    *  Internal method called by remove()
    * @param batch - array of documents or $loki ids to remove
    */
-  // biome-ignore lint/suspicious/noExplicitAny: documents or $loki ids
   removeBatch(batch: any[]) {
     const len = batch.length;
     const dlen = this.data.length;
@@ -1697,7 +1624,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * Remove a document from the collection
    * @param doc - document to remove from collection
    */
-  // biome-ignore lint/suspicious/noExplicitAny: document, array of documents or $loki id
   remove(doc: any): any {
     if (typeof doc === 'number') {
       doc = this.get(doc);
@@ -1787,7 +1713,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @returns Object reference if document was found, null if not,
    *     or an array if 'returnPosition' was passed.
    */
-  // biome-ignore lint/suspicious/noExplicitAny: object, [object, position] or null depending on returnPosition
   get(id: number | string, returnPosition?: boolean): any {
     if (!this.idIndex) {
       this.ensureId();
@@ -1870,7 +1795,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
 
     // If you are inserting a javascript Date value into a binary index, convert to epoch time
     if (this.serializableIndices === true && val instanceof Date) {
-      // biome-ignore lint/suspicious/noExplicitAny: dynamic property assignment
       (this.data[dataPosition] as any)[binaryIndexName] = val.getTime();
       val = Utils.getIn(this.data[dataPosition], binaryIndexName);
     }
@@ -2016,7 +1940,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param val - value to find within index
    * @param adaptive - if true, we will return insert position
    */
-  // biome-ignore lint/suspicious/noExplicitAny: indexed values are dynamic
   calculateRangeStart(prop: string, val: any, adaptive?: boolean, usingDotNotation?: boolean) {
     const rcd = this.data;
     const index = this.binaryIndices[prop].values;
@@ -2059,7 +1982,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * Internal method used for indexed $between.  Given a prop (index name), and a value
    * (which may or may not yet exist) this will find the final position of that upper range value.
    */
-  // biome-ignore lint/suspicious/noExplicitAny: indexed values are dynamic
   calculateRangeEnd(prop: string, val: any, usingDotNotation?: boolean) {
     const rcd = this.data;
     const index = this.binaryIndices[prop].values;
@@ -2113,17 +2035,14 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param val - value to use for range calculation.
    * @returns [start, end] index array positions
    */
-  // biome-ignore lint/suspicious/noExplicitAny: range values are dynamic
   calculateRange(op: string, prop: string, val: any): number[] {
     const rcd = this.data;
     const index = this.binaryIndices[prop].values;
     const min = 0;
     const max = index.length - 1;
     let lbound: number;
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic property values
     let lval: any;
     let ubound: number;
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic property values
     let uval: any;
 
     // when no documents are in collection, return empty range condition
@@ -2314,10 +2233,8 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param value - unique value to search for
    * @returns document matching the value passed
    */
-  // biome-ignore lint/suspicious/noExplicitAny: returns a document or a lookup function when value is omitted
   by(field: string, value?: any): any {
     if (value === undefined) {
-      // biome-ignore lint/suspicious/noExplicitAny: unique value
       return (value: any) => {
         return this.by(field, value);
       };
@@ -2335,7 +2252,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param query - query object used to perform search with
    * @returns First matching document, or null if none
    */
-  // biome-ignore lint/suspicious/noExplicitAny: query values are dynamic
   findOne(query?: LokiQuery<any>): LokiDocument<T> | null {
     query = query || {};
 
@@ -2359,7 +2275,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param parameters - Object containing properties representing parameters to substitute
    * @returns (this) resultset, or data array if any map or join functions where called
    */
-  // biome-ignore lint/suspicious/noExplicitAny: transform steps and parameters are free-form
   chain(transform?: string | any[], parameters?: any): Resultset<T> {
     const rs = new Resultset<T>(this);
 
@@ -2377,7 +2292,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param query - 'mongo-like' query object
    * @returns Array of matching documents
    */
-  // biome-ignore lint/suspicious/noExplicitAny: query values are dynamic
   find(query?: LokiQuery<any>): LokiDocument<T>[] {
     return this.chain().find(query).data();
   }
@@ -2386,7 +2300,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * Find object by unindexed field by property equal to value,
    * simply iterates and returns the first element matching the query
    */
-  // biome-ignore lint/suspicious/noExplicitAny: compared value is dynamic
   findOneUnindexed(prop: string, value: any): LokiDocument<T> | null {
     let i = this.data.length;
     let doc: LokiDocument<T>;
@@ -2451,7 +2364,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
   }
 
   // async executor. This is only to enable callbacks at the end of the execution.
-  // biome-ignore lint/suspicious/noExplicitAny: user function executed with no bound `this`
   async(fun: (this: any) => void, callback: () => void) {
     setTimeout(() => {
       if (typeof fun === 'function') {
@@ -2474,7 +2386,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param fun - filter function to run against all collection docs
    * @returns all documents which pass your filter function
    */
-  // biome-ignore lint/suspicious/noExplicitAny: filter over dynamic documents
   where(fun: (obj: any) => boolean): LokiDocument<T>[] {
     return this.chain().where(fun).data();
   }
@@ -2511,13 +2422,10 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @returns Result of the mapping operation
    */
   eqJoin(
-    // biome-ignore lint/suspicious/noExplicitAny: array, Resultset or Collection
     joinData: any,
     leftJoinProp: string | ((obj: any) => string),
     rightJoinProp: string | ((obj: any) => string),
-    // biome-ignore lint/suspicious/noExplicitAny: user map function
     mapFun?: (left: any, right: any) => any,
-    // biome-ignore lint/suspicious/noExplicitAny: data() options
     dataOptions?: any,
   ) {
     // logic in Resultset class
@@ -2545,7 +2453,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
   /**
    * (Staging API) create a copy of an object and insert it into a stage
    */
-  // biome-ignore lint/suspicious/noExplicitAny: staged document
   stage(stageName: string, obj: any) {
     const copy = JSON.parse(JSON.stringify(obj));
     this.getStage(stageName)[obj.$loki] = copy;
@@ -2582,7 +2489,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
     let i = 0;
     const len = this.data.length;
     const isDotNotation = isDeepProperty(field);
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic property values
     const result: any[] = [];
     for (i; i < len; i += 1) {
       result.push(deepProperty(this.data[i], field, isDotNotation));
@@ -2602,12 +2508,10 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
     let i = 0;
     const len = this.data.length;
     const deep = isDeepProperty(field);
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic property values
     const result: { index: number; value: any } = {
       index: 0,
       value: undefined,
     };
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic property values
     let max: any;
 
     for (i; i < len; i += 1) {
@@ -2629,12 +2533,10 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
     let i = 0;
     const len = this.data.length;
     const deep = isDeepProperty(field);
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic property values
     const result: { index: number; value: any } = {
       index: 0,
       value: undefined,
     };
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic property values
     let min: any;
 
     for (i; i < len; i += 1) {
@@ -2683,7 +2585,6 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
    * @param field
    */
   mode(field: string) {
-    // biome-ignore lint/suspicious/noExplicitAny: dictionary keyed by arbitrary values
     const dict: Record<string, any> = {};
     const data = this.extract(field);
     data.forEach((obj) => {

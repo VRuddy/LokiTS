@@ -93,7 +93,6 @@ SortedIndex.prototype.keys = [];
 SortedIndex.prototype.values = [];
 // set the default sort
 SortedIndex.prototype.sort = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
-// biome-ignore lint/complexity/useArrowFunction: needs `this` (prototype method)
 SortedIndex.prototype.bs = function (this: SortedIndex) {
   return BSonSort(this.sort);
 };

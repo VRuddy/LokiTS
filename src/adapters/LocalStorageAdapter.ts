@@ -10,7 +10,6 @@ export class LokiLocalStorageAdapter {
    * @param dbname - the name of the database to load
    * @param callback - the callback to handle the result
    */
-  // biome-ignore lint/suspicious/noExplicitAny: callback receives data, Error or null
   loadDatabase(dbname: string, callback: (result: any) => void): void {
     if (localStorageAvailable()) {
       callback(localStorage.getItem(dbname));
@@ -26,7 +25,6 @@ export class LokiLocalStorageAdapter {
    * @param dbstring - serialized database
    * @param callback - the callback to handle the result
    */
-  // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
   saveDatabase(dbname: string, dbstring: string, callback: (err: any) => void): void {
     if (localStorageAvailable()) {
       localStorage.setItem(dbname, dbstring);
@@ -42,7 +40,6 @@ export class LokiLocalStorageAdapter {
    * @param dbname - the filename of the database to delete
    * @param callback - the callback to handle the result
    */
-  // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
   deleteDatabase(dbname: string, callback: (err: any) => void): void {
     if (localStorageAvailable()) {
       localStorage.removeItem(dbname);

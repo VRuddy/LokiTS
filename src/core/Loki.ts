@@ -22,7 +22,6 @@ export interface LokiConfigOptions {
   serializationMethod?: 'normal' | 'pretty' | 'destructured' | string;
   destructureDelimiter?: string;
   throttledSaves?: boolean;
-  // biome-ignore lint/suspicious/noExplicitAny: per-collection loader options (proto/inflate) are dynamic
   [key: string]: any;
 }
 
@@ -43,7 +42,6 @@ export interface LokiConfigOptions {
  * @param options.throttledSaves - (default: true) debounces multiple calls to to saveDatabase reducing number of disk I/O operations
  *                                  and guaranteeing proper serialization of the calls.
  */
-// biome-ignore lint/suspicious/noUnsafeDeclarationMerging: alias members (toJson/save) are declared via interface merging per porting contract
 export class Loki extends LokiEventEmitter {
   filename!: string;
   collections!: Collection[];
@@ -51,14 +49,12 @@ export class Loki extends LokiEventEmitter {
   engineVersion!: number;
   autosave!: boolean;
   autosaveInterval!: number;
-  // biome-ignore lint/suspicious/noExplicitAny: timer handle differs between Node and browsers
   autosaveHandle!: any;
   throttledSaves!: boolean;
   options!: LokiConfigOptions;
   persistenceMethod!: string | null | undefined;
   persistenceAdapter!: LokiPersistenceAdapter | null;
   throttledSavePending!: boolean;
-  // biome-ignore lint/suspicious/noExplicitAny: callbacks are user supplied
   throttledCallbacks!: any[];
   verbose!: boolean;
   ENV!: string;
@@ -118,7 +114,6 @@ export class Loki extends LokiEventEmitter {
     };
 
     const getENV = (): string => {
-      // biome-ignore lint/suspicious/noExplicitAny: environment globals are untyped
       const g: any = typeof global !== 'undefined' ? global : undefined;
       if (typeof global !== 'undefined' && (g.android || g.NSObject)) {
         // If no adapter assume nativescript which needs adapter to be passed manually
@@ -164,9 +159,7 @@ export class Loki extends LokiEventEmitter {
 
   // experimental support for browserify's abstract syntax scan to pick up dependency of indexed adapter.
   // Hopefully, once this hits npm a browserify require of lokijs should scan the main file and detect this indexed adapter reference.
-  // biome-ignore lint/suspicious/noExplicitAny: dynamically required adapter module
   getIndexedAdapter(): any {
-    // biome-ignore lint/suspicious/noExplicitAny: dynamically required adapter module
     let adapter: any;
 
     if (typeof require === 'function') {
@@ -297,7 +290,6 @@ export class Loki extends LokiEventEmitter {
     options = options || {};
 
     // currently inverting and letting loadJSONObject do most of the work
-    // biome-ignore lint/suspicious/noExplicitAny: a Loki instance is passed as a serialized db object
     databaseCopy.loadJSONObject(this as any, { retainDirtyFlags: true });
 
     // since our JSON serializeReplacer is not invoked for reference database adapters, this will let us mimic
@@ -307,9 +299,7 @@ export class Loki extends LokiEventEmitter {
 
       clen = databaseCopy.collections.length;
       for (idx = 0; idx < clen; idx++) {
-        // biome-ignore lint/suspicious/noExplicitAny: nulling non-serializable collection members
         (databaseCopy.collections[idx] as any).constraints = null;
-        // biome-ignore lint/suspicious/noExplicitAny: nulling non-serializable collection members
         (databaseCopy.collections[idx] as any).ttl = null;
       }
     }
@@ -335,7 +325,6 @@ export class Loki extends LokiEventEmitter {
    * @param options.ttlInterval - time interval for clearing out 'aged' documents; not set by default.
    * @returns a reference to the collection which was just added
    */
-  // biome-ignore lint/suspicious/noExplicitAny: collection options and document type are dynamic
   addCollection<T extends object = any>(name: string, options?: any): Collection<T> {
     let i: number;
     const len = this.collections.length;
@@ -383,7 +372,6 @@ export class Loki extends LokiEventEmitter {
    * @param collectionName - name of collection to look up
    * @returns Reference to collection in database by that name, or null if not found
    */
-  // biome-ignore lint/suspicious/noExplicitAny: document type is dynamic
   getCollection<T extends object = any>(collectionName: string): Collection<T> | null {
     let i: number;
     const len = this.collections.length;
@@ -405,7 +393,6 @@ export class Loki extends LokiEventEmitter {
    * @param newName - new name of collection
    * @returns reference to the newly renamed collection
    */
-  // biome-ignore lint/suspicious/noExplicitAny: document type is dynamic
   renameCollection<T extends object = any>(oldName: string, newName: string): Collection<T> | null {
     const c = this.getCollection<T>(oldName);
 
@@ -427,7 +414,6 @@ export class Loki extends LokiEventEmitter {
     while (i--) {
       colls.push({
         name: this.collections[i].name,
-        // biome-ignore lint/suspicious/noExplicitAny: objType is a collection internal
         type: (this.collections[i] as any).objType,
         count: this.collections[i].data.length,
       });
@@ -446,12 +432,9 @@ export class Loki extends LokiEventEmitter {
     for (i = 0; i < len; i += 1) {
       if (this.collections[i].name === collectionName) {
         const tmpcol = new Collection(collectionName, {});
-        // biome-ignore lint/suspicious/noExplicitAny: copying arbitrary own properties
         const curcol = this.collections[i] as any;
         for (const prop in curcol) {
-          // biome-ignore lint/suspicious/noExplicitAny: copying arbitrary own properties
           if (Object.hasOwn(curcol, prop) && Object.hasOwn(tmpcol, prop)) {
-            // biome-ignore lint/suspicious/noExplicitAny: copying arbitrary own properties
             curcol[prop] = (tmpcol as any)[prop];
           }
         }
@@ -469,7 +452,6 @@ export class Loki extends LokiEventEmitter {
    * serializeReplacer - used to prevent certain properties from being serialized
    *
    */
-  // biome-ignore lint/suspicious/noExplicitAny: JSON.stringify replacer signature
   serializeReplacer(key: string, value: any): any {
     switch (key) {
       case 'autosaveHandle':
@@ -533,10 +515,8 @@ export class Loki extends LokiEventEmitter {
   }): string | string[] | string[][] {
     let idx: number;
     let sidx: number;
-    // biome-ignore lint/suspicious/noExplicitAny: result is string or string[] depending on options
     let result: any;
     let resultlen: number;
-    // biome-ignore lint/suspicious/noExplicitAny: elements are strings or string arrays depending on options
     const reconstruct: any[] = [];
     let dbcopy: Loki | null;
 
@@ -569,7 +549,6 @@ export class Loki extends LokiEventEmitter {
 
     // not just an individual collection, so we will need to serialize db container via shallow copy
     dbcopy = new Loki(this.filename);
-    // biome-ignore lint/suspicious/noExplicitAny: a Loki instance is passed as a serialized db object
     dbcopy.loadJSONObject(this as any);
 
     for (idx = 0; idx < dbcopy.collections.length; idx++) {
@@ -721,7 +700,6 @@ export class Loki extends LokiEventEmitter {
    * @returns An object representation of the deserialized database, not yet applied to 'this' db or document array
    */
   deserializeDestructured(
-    // biome-ignore lint/suspicious/noExplicitAny: string or array depending on options
     destructuredSource: any,
     options?: {
       partitioned?: boolean;
@@ -729,18 +707,14 @@ export class Loki extends LokiEventEmitter {
       delimited?: boolean;
       delimiter?: string;
     },
-    // biome-ignore lint/suspicious/noExplicitAny: parsed database object
   ): any {
-    // biome-ignore lint/suspicious/noExplicitAny: string or array depending on options
     let workarray: any = [];
     let len: number;
-    // biome-ignore lint/suspicious/noExplicitAny: parsed database object
     let cdb: any;
     let collIndex = 0;
     let collCount: number;
     let lineIndex = 1;
     let done = false;
-    // biome-ignore lint/suspicious/noExplicitAny: parsed JSON line
     let currObject: any;
 
     options = options || {};
@@ -846,7 +820,6 @@ export class Loki extends LokiEventEmitter {
    * @returns an array of documents to attach to collection.data.
    */
   deserializeCollection(
-    // biome-ignore lint/suspicious/noExplicitAny: string or array depending on options
     destructuredSource: any,
     options?: {
       partitioned?: boolean;
@@ -855,9 +828,7 @@ export class Loki extends LokiEventEmitter {
       collectionIndex?: number;
       partition?: number;
     },
-    // biome-ignore lint/suspicious/noExplicitAny: array of documents
   ): any[] {
-    // biome-ignore lint/suspicious/noExplicitAny: array of strings then documents
     let workarray: any[] = [];
     let idx: number;
     let len: number;
@@ -898,9 +869,7 @@ export class Loki extends LokiEventEmitter {
    * @param options - apply or override collection level settings
    * @param options.retainDirtyFlags - whether collection dirty flags will be preserved
    */
-  // biome-ignore lint/suspicious/noExplicitAny: per-collection loader options are dynamic
   loadJSON(serializedDb: string, options?: any): void {
-    // biome-ignore lint/suspicious/noExplicitAny: parsed database object
     let dbObject: any;
     if (serializedDb.length === 0) {
       dbObject = {};
@@ -930,19 +899,14 @@ export class Loki extends LokiEventEmitter {
    * @param options - apply or override collection level settings
    * @param options.retainDirtyFlags - whether collection dirty flags will be preserved
    */
-  // biome-ignore lint/suspicious/noExplicitAny: dbObject is a parsed (or Loki) object, options are dynamic
   loadJSONObject(dbObject: any, options?: any): void {
     let i = 0;
     const len = dbObject.collections ? dbObject.collections.length : 0;
-    // biome-ignore lint/suspicious/noExplicitAny: serialized collection object
     let coll: any;
-    // biome-ignore lint/suspicious/noExplicitAny: collection internals are assigned dynamically
     let copyColl: any;
     let clen: number;
     let j: number;
-    // biome-ignore lint/suspicious/noExplicitAny: user supplied loader
     let loader: any;
-    // biome-ignore lint/suspicious/noExplicitAny: user supplied loader result
     let collObj: any;
 
     this.name = dbObject.name;
@@ -958,16 +922,13 @@ export class Loki extends LokiEventEmitter {
 
     this.collections = [];
 
-    // biome-ignore lint/suspicious/noExplicitAny: serialized collection object
     function makeLoader(coll: any) {
       const collOptions = options[coll.name];
-      // biome-ignore lint/suspicious/noExplicitAny: user supplied inflater
       let inflater: any;
 
       if (collOptions.proto) {
         inflater = collOptions.inflate || Utils.copyProperties;
 
-        // biome-ignore lint/suspicious/noExplicitAny: user data
         return (data: any) => {
           const collObj = new collOptions.proto();
           inflater(data, collObj);
@@ -1108,7 +1069,6 @@ export class Loki extends LokiEventEmitter {
    *
    * @param callback - (Optional) if supplied will be registered with close event before emitting.
    */
-  // biome-ignore lint/suspicious/noExplicitAny: user supplied callback
   close(callback?: (err?: any) => void): void {
     // for autosave scenarios, we will let close perform final save (if dirty)
     // For web use, you might call from window.onbeforeunload to shutdown database, saving pending changes
@@ -1144,12 +1104,10 @@ export class Loki extends LokiEventEmitter {
    * @returns array of changes
    * @see private method createChange() in Collection
    */
-  // biome-ignore lint/suspicious/noExplicitAny: change objects are dynamic
   generateChangesNotification(arrayOfCollectionNames?: string[]): any[] {
     function getCollName(coll: Collection) {
       return coll.name;
     }
-    // biome-ignore lint/suspicious/noExplicitAny: change objects are dynamic
     let changes: any[] = [];
     const selectedCollections = arrayOfCollectionNames || this.collections.map(getCollName);
 
@@ -1196,7 +1154,6 @@ export class Loki extends LokiEventEmitter {
       recursiveWaitLimit?: boolean;
       recursiveWaitLimitDuration?: number;
       started?: number;
-      // biome-ignore lint/suspicious/noExplicitAny: options object is shared with loadDatabase options
       [key: string]: any;
     },
   ): void {
@@ -1264,12 +1221,9 @@ export class Loki extends LokiEventEmitter {
    * @param options - not currently used (remove or allow overrides?)
    * @param callback - (Optional) user supplied async callback / error handler
    */
-  // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
   loadDatabaseInternal(options?: any, callback?: (err?: any) => void): void {
-    // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
     const cFun =
       callback ||
-      // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
       ((err?: any, _data?: any) => {
         if (err) {
           throw err;
@@ -1279,7 +1233,6 @@ export class Loki extends LokiEventEmitter {
 
     // the persistenceAdapter should be present if all is ok, but check to be sure.
     if (this.persistenceAdapter !== null) {
-      // biome-ignore lint/suspicious/noExplicitAny: adapters may return string, object, Error or null
       this.persistenceAdapter.loadDatabase(
         this.filename,
         function loadDatabaseCallback(dbString: any) {
@@ -1349,7 +1302,6 @@ export class Loki extends LokiEventEmitter {
    *   }
    * });
    */
-  // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
   loadDatabase(options?: any, callback?: (err?: any) => void): void {
     // if throttling disabled, just call internal
     if (!this.throttledSaves) {
@@ -1388,12 +1340,9 @@ export class Loki extends LokiEventEmitter {
   /**
    * Internal save logic, decoupled from save throttling logic
    */
-  // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
   saveDatabaseInternal(callback?: (err?: any) => void): void {
-    // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
     const cFun =
       callback ||
-      // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
       ((err?: any) => {
         if (err) {
           throw err;
@@ -1408,7 +1357,6 @@ export class Loki extends LokiEventEmitter {
       return;
     }
 
-    // biome-ignore lint/suspicious/noExplicitAny: adapter contract is mode dependent
     const adapter = this.persistenceAdapter as any;
 
     // run incremental, reference, or normal mode adapters, depending on what's available
@@ -1430,17 +1378,14 @@ export class Loki extends LokiEventEmitter {
           // remember and clear dirty ids -- we must do it before the save so that if
           // and update occurs between here and callback, it will get saved later
           cachedDirty = self.collections.map((collection) => {
-            // biome-ignore lint/suspicious/noExplicitAny: dirty tracking internals
             return [collection.dirty, (collection as any).dirtyIds] as [boolean, number[]];
           });
           self.collections.forEach((col) => {
             col.dirty = false;
-            // biome-ignore lint/suspicious/noExplicitAny: dirty tracking internals
             (col as any).dirtyIds = [];
           });
           return lokiCopy;
         },
-        // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
         function exportDatabaseCallback(err?: any) {
           self.ignoreAutosave = false;
           if (err && cachedDirty) {
@@ -1449,7 +1394,6 @@ export class Loki extends LokiEventEmitter {
             self.collections.forEach((col, i) => {
               const cached = cd[i];
               col.dirty = col.dirty || cached[0];
-              // biome-ignore lint/suspicious/noExplicitAny: dirty tracking internals
               (col as any).dirtyIds = (col as any).dirtyIds.concat(cached[1]);
             });
           }
@@ -1462,7 +1406,6 @@ export class Loki extends LokiEventEmitter {
       adapter.exportDatabase(
         this.filename,
         this.copy({ removeNonSerializable: true }),
-        // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
         function exportDatabaseCallback(err?: any) {
           self.autosaveClearFlags();
           cFun(err);
@@ -1475,7 +1418,6 @@ export class Loki extends LokiEventEmitter {
       // or autosave won't work if an update occurs between here and the callback
       // TODO: This should be stored and rolled back in case of DB save failure
       this.autosaveClearFlags();
-      // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
       adapter.saveDatabase(
         this.filename,
         this.serialize(),
@@ -1504,7 +1446,6 @@ export class Loki extends LokiEventEmitter {
    *   }
    * });
    */
-  // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
   saveDatabase(callback?: (err?: any) => void): void {
     if (!this.throttledSaves) {
       this.saveDatabaseInternal(callback);
@@ -1546,16 +1487,9 @@ export class Loki extends LokiEventEmitter {
    *
    * @param callback - (Optional) user supplied async callback / error handler
    */
-  deleteDatabase(
-    // biome-ignore lint/suspicious/noExplicitAny: options is unused; may be the callback itself
-    options?: any,
-    // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
-    callback?: (err?: any) => void,
-  ): void {
-    // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
+  deleteDatabase(options?: any, callback?: (err?: any) => void): void {
     let cFun: (err?: any, data?: any) => void =
       callback ||
-      // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
       ((err?: any, _data?: any) => {
         if (err) {
           throw err;
@@ -1570,10 +1504,8 @@ export class Loki extends LokiEventEmitter {
 
     // the persistenceAdapter should be present if all is ok, but check to be sure.
     if (this.persistenceAdapter !== null) {
-      // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
       (this.persistenceAdapter as any).deleteDatabase(
         this.filename,
-        // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
         function deleteDatabaseCallback(err?: any) {
           cFun(err);
         },
@@ -1615,7 +1547,6 @@ export class Loki extends LokiEventEmitter {
    * @param options - not currently used (remove or allow overrides?)
    * @param callback - (Optional) user supplied async callback
    */
-  // biome-ignore lint/suspicious/noExplicitAny: options unused; callback receives errors of any shape
   autosaveEnable(options?: any, callback?: (err?: any) => void): void {
     this.autosave = true;
 

@@ -187,7 +187,6 @@ export class Resultset<T extends object = any> {
   transform(transform: string | TransformStep[], parameters?: object): Resultset<T> {
     let idx: number;
     let step: TransformStep;
-    // biome-ignore lint/complexity/noUselessThisAlias: faithful port (rs is reassigned below)
     let rs: Resultset<T> = this;
 
     // if transform is name, then do lookup first

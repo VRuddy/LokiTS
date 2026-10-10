@@ -26,17 +26,14 @@ export interface LokiPartitioningAdapterOptions {
  */
 export class LokiPartitioningAdapter {
   mode!: string;
-  // biome-ignore lint/suspicious/noExplicitAny: inner adapter follows the callback adapter contract
   adapter!: any;
   options!: LokiPartitioningAdapterOptions;
   dbref!: Loki | null;
   dbname!: string;
-  // biome-ignore lint/suspicious/noExplicitAny: iterator state is built incrementally
   pageIterator!: any;
   /** assigned in exportDatabase */
   dirtyPartitions!: number[];
 
-  // biome-ignore lint/suspicious/noExplicitAny: inner adapter follows the callback adapter contract
   constructor(adapter?: any, options?: LokiPartitioningAdapterOptions) {
     this.mode = 'reference';
     this.adapter = null;
@@ -81,13 +78,11 @@ export class LokiPartitioningAdapter {
    * @param dbname - name of the database (filename/keyname)
    * @param callback - adapter callback to return load result to caller
    */
-  // biome-ignore lint/suspicious/noExplicitAny: callback receives db, Error or falsy
   loadDatabase(dbname: string, callback: (result: any) => void): void {
     this.dbname = dbname;
     this.dbref = new Loki(dbname);
 
     // load the db container (without data)
-    // biome-ignore lint/suspicious/noExplicitAny: inner adapter result is string, Error or falsy
     this.adapter.loadDatabase(dbname, (result: any) => {
       // empty database condition is for inner adapter return null/undefined/falsy
       if (!result) {
@@ -141,7 +136,6 @@ export class LokiPartitioningAdapter {
       return;
     }
 
-    // biome-ignore lint/suspicious/noExplicitAny: inner adapter result is a string
     this.adapter.loadDatabase(keyname, (result: any) => {
       const dbref = this.dbref as Loki;
       const data = dbref.deserializeCollection(result, {
@@ -168,9 +162,7 @@ export class LokiPartitioningAdapter {
     const keyname = `${this.dbname}.${this.pageIterator.collection}.${this.pageIterator.pageIndex}`;
 
     // load whatever page is next in sequence
-    // biome-ignore lint/suspicious/noExplicitAny: inner adapter result is a string
     this.adapter.loadDatabase(keyname, (result: any) => {
-      // biome-ignore lint/suspicious/noExplicitAny: array of strings, then nulls
       let data: any[] = result.split(this.options.delimiter);
       result = ''; // free up memory now that we have split it into array
       let dlen = data.length;
@@ -221,7 +213,6 @@ export class LokiPartitioningAdapter {
    * @param callback - adapter callback to return load result to caller
    *
    */
-  // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
   exportDatabase(dbname: string, dbref: Loki, callback: (err?: any) => void): void {
     let idx: number;
     const clen = dbref.collections.length;
@@ -247,7 +238,6 @@ export class LokiPartitioningAdapter {
    *
    * @param callback - adapter callback to return load result to caller
    */
-  // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
   saveNextPartition(callback: (err?: any) => void): void {
     const partition = this.dirtyPartitions.shift() as number;
     const keyname = this.dbname + (partition === -1 ? '' : `.${partition}`);
@@ -261,7 +251,6 @@ export class LokiPartitioningAdapter {
       };
 
       // since saveNextPage recursively calls itself until done, our callback means this whole paged partition is finished
-      // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
       this.saveNextPage((err?: any) => {
         if (this.dirtyPartitions.length === 0) {
           callback(err);
@@ -279,7 +268,6 @@ export class LokiPartitioningAdapter {
       partition: partition,
     });
 
-    // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
     this.adapter.saveDatabase(keyname, result, (err?: any) => {
       if (err) {
         callback(err);
@@ -299,7 +287,6 @@ export class LokiPartitioningAdapter {
    *
    * @param callback - adapter callback to return load result to caller
    */
-  // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
   saveNextPage(callback: (err?: any) => void): void {
     const coll = (this.dbref as Loki).collections[this.pageIterator.collection];
     const keyname = `${this.dbname}.${this.pageIterator.collection}.${this.pageIterator.pageIndex}`;
@@ -311,7 +298,6 @@ export class LokiPartitioningAdapter {
     let doneWithPartition = false;
     let doneWithPage = false;
 
-    // biome-ignore lint/suspicious/noExplicitAny: callback receives errors of any shape
     const pageSaveCallback = (err?: any) => {
       pageBuilder = '';
 

@@ -30,7 +30,6 @@ export class KeyValueStore {
 KeyValueStore.prototype.keys = [];
 KeyValueStore.prototype.values = [];
 KeyValueStore.prototype.sort = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
-// biome-ignore lint/complexity/useArrowFunction: needs `this` (prototype method)
 KeyValueStore.prototype.bs = function (this: KeyValueStore) {
   return BSonSort(this.sort);
 };
