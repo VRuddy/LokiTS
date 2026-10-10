@@ -14,12 +14,12 @@ export interface PersistenceHost {
   loadJSON(serializedDb: string, options?: any): void;
   loadJSONObject(dbObject: any, options?: any): void;
   autosaveClearFlags(): void;
-  emit(event: 'loaded', message: string): void;
 }
 
 const notConfigured = () => new Error('persistenceAdapter not configured');
 
-export async function loadFromAdapter(host: PersistenceHost, options?: any): Promise<void> {
+/** Loads the database from the adapter and resolves with the message of the `loaded` event. */
+export async function loadFromAdapter(host: PersistenceHost, options?: any): Promise<string> {
   const adapter = host.persistenceAdapter;
   if (adapter === null) {
     throw notConfigured();
@@ -29,17 +29,14 @@ export async function loadFromAdapter(host: PersistenceHost, options?: any): Pro
 
   if (typeof result === 'string') {
     host.loadJSON(result, options || {});
-    host.emit('loaded', `database ${host.filename} loaded`);
-    return;
+    return `database ${host.filename} loaded`;
   }
   if (!result) {
-    host.emit('loaded', `empty database ${host.filename} loaded`);
-    return;
+    return `empty database ${host.filename} loaded`;
   }
   if (typeof result === 'object') {
     host.loadJSONObject(result, options || {});
-    host.emit('loaded', `database ${host.filename} loaded`);
-    return;
+    return `database ${host.filename} loaded`;
   }
   throw new Error(`unexpected adapter response : ${result}`);
 }

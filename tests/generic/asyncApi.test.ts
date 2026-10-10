@@ -15,6 +15,52 @@ const failing = {
 };
 
 describe('promise API', () => {
+  describe('loaded event order', () => {
+    it('is emitted after the loadDatabase callback', async () => {
+      const db = new Loki('a.db', { adapter: new LokiMemoryAdapter() });
+      const order: string[] = [];
+      db.on('loaded', () => order.push('loaded'));
+
+      await db.loadDatabase({}, () => order.push('callback'));
+
+      expect(order).toEqual(['callback', 'loaded']);
+    });
+
+    it('is emitted before an awaiting caller continues', async () => {
+      const db = new Loki('a.db', { adapter: new LokiMemoryAdapter() });
+      const order: string[] = [];
+      db.on('loaded', () => order.push('loaded'));
+
+      await db.loadDatabase();
+      order.push('awaited');
+
+      expect(order).toEqual(['loaded', 'awaited']);
+    });
+
+    it('follows the same order for loadDatabaseInternal', async () => {
+      const db = new Loki('a.db', { adapter: new LokiMemoryAdapter() });
+      const order: string[] = [];
+      db.on('loaded', () => order.push('loaded'));
+      await db.loadDatabaseInternal({}, () => order.push('callback'));
+      await db.loadDatabaseInternal();
+      order.push('awaited');
+      expect(order).toEqual(['callback', 'loaded', 'loaded', 'awaited']);
+    });
+
+    it('is not emitted when the load fails', async () => {
+      const db = new Loki('a.db', { adapter: failing });
+      const events: string[] = [];
+      db.on('loaded', () => events.push('loaded'));
+      db.on('warning', () => events.push('warning'));
+
+      await db.loadDatabase({}, () => events.push('callback'));
+      await expect(db.loadDatabase()).rejects.toThrow('io');
+      await expect(db.loadDatabaseInternal()).rejects.toThrow('io');
+
+      expect(events).toEqual(['callback', 'warning', 'warning']);
+    });
+  });
+
   it('awaits save, load and delete', async () => {
     const adapter = new LokiMemoryAdapter();
     const db = new Loki('a.db', { adapter });

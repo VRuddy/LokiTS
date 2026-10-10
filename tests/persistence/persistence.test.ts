@@ -10,25 +10,26 @@ import { ManualAdapter, ManualIncrementalAdapter } from '../helpers/fake-adapter
 const dbWith = (adapter: unknown) => new Loki('p.db', { adapter: adapter as any });
 
 describe('loadFromAdapter', () => {
-  it('loads strings, objects and empty results, and emits loaded', async () => {
+  it('loads strings, objects and empty results, and returns the loaded message', async () => {
     const source = new Loki('p.db');
     source.addCollection('c').insert({ a: 1 });
-    const messages: unknown[] = [];
 
     const fromString = dbWith({ loadDatabase: async () => source.serialize() });
-    fromString.on('loaded', (m) => messages.push(m));
-    await loadFromAdapter(fromString);
+    const stringMessage = await loadFromAdapter(fromString);
     expect(fromString.getCollection('c')?.count()).toBe(1);
 
     const fromObject = dbWith({ loadDatabase: async () => JSON.parse(source.serialize()) });
-    await loadFromAdapter(fromObject);
+    const objectMessage = await loadFromAdapter(fromObject);
     expect(fromObject.getCollection('c')?.count()).toBe(1);
 
     const empty = dbWith({ loadDatabase: async () => null });
-    empty.on('loaded', (m) => messages.push(m));
-    await loadFromAdapter(empty);
+    const emptyMessage = await loadFromAdapter(empty);
 
-    expect(messages).toEqual(['database p.db loaded', 'empty database p.db loaded']);
+    expect([stringMessage, objectMessage, emptyMessage]).toEqual([
+      'database p.db loaded',
+      'database p.db loaded',
+      'empty database p.db loaded',
+    ]);
   });
 
   it('rejects on adapter errors, invalid JSON and unexpected values', async () => {

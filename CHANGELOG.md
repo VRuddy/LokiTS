@@ -21,7 +21,7 @@
 * a save requested while a load runs is cancelled if that load fails (rejected with an error whose `cause` is the load error), so it cannot overwrite storage with the in-memory state; saves requested afterwards run normally
 * fix: in reference mode (LokiPartitioningAdapter) a change made during an export lost its dirty flag, and the incremental rollback after a failed save broke when a collection was added or removed meanwhile
 * `Loki.open` ignores the `autoload` and `autoloadCallback` options and does not load when no adapter is configured
-* callbacks receive `undefined` on success (previously the raw adapter value), an unexpected load response is an Error, and `loaded` is emitted before the loadDatabase callback
+* callbacks receive `undefined` on success (previously the raw adapter value), and an unexpected load response is an Error
 * autosave and autoload errors without a callback are emitted as `warning` events; a failed persistence call made without a callback is reported the same way instead of becoming an unhandled rejection (awaited or not, the warning is emitted; awaiting callers also get the rejection); one failed throttled save emits one warning per waiting caller that has no callback; a `warning` listener that throws is rethrown from a timer
 * BREAKING: the `warning` payload is typed `unknown` instead of `string`; TypeScript listeners typed `(msg: string) => …` no longer compile
 * legacy Jasmine/Karma specs ported to Vitest (`tests/`); Karma, PhantomJS, jshint, istanbul, uglify removed

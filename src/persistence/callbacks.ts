@@ -12,14 +12,26 @@ export function invoke(callback: (...args: any[]) => unknown, ...args: unknown[]
 /**
  * Double API of Loki methods: without a callback the promise is returned as is; with one, the error goes
  * to the callback and the promise always resolves, so callback users never see an unhandled rejection.
+ * `onSuccess` runs after the callback and before the returned promise resolves.
  */
-export function settle(promise: Promise<void>, callback?: (err?: any) => void): Promise<void> {
-  if (!callback) {
-    return promise;
+export function settle<T = void>(
+  promise: Promise<T>,
+  callback?: (err?: any) => void,
+  onSuccess?: (value: T) => void,
+): Promise<void> {
+  if (!callback && !onSuccess) {
+    return promise as Promise<void>;
   }
   return promise.then(
-    () => invoke(callback),
-    (err) => invoke(callback, err),
+    (value) => {
+      if (callback) {
+        invoke(callback);
+      }
+      if (onSuccess) {
+        invoke(onSuccess, value);
+      }
+    },
+    callback ? (err) => invoke(callback, err) : undefined,
   );
 }
 

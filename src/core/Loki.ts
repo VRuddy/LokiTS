@@ -1216,7 +1216,7 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
 
   /** @deprecated Loads without waiting for pending saves. Use {@link Loki#loadDatabase}. */
   loadDatabaseInternal(options?: any, callback?: (err?: any) => void): Promise<void> {
-    return this.settleOrWarn(loadFromAdapter(this as PersistenceHost, options), callback);
+    return this.settleLoad(loadFromAdapter(this as PersistenceHost, options), callback);
   }
 
   /**
@@ -1227,10 +1227,10 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
    * await db.loadDatabase();
    */
   loadDatabase(options?: any, callback?: (err?: any) => void): Promise<void> {
-    return this.settleOrWarn(this.loadAfterSaves(options), callback);
+    return this.settleLoad(this.loadAfterSaves(options), callback);
   }
 
-  private async loadAfterSaves(options?: any): Promise<void> {
+  private async loadAfterSaves(options?: any): Promise<string> {
     if (!this.throttledSaves) {
       return loadFromAdapter(this as PersistenceHost, options);
     }
@@ -1241,7 +1241,12 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
         throw new Error('Unable to pause save throttling long enough to read database');
       }
     }
-    await this.saveQueue.lock(() => loadFromAdapter(this as PersistenceHost, options));
+    return this.saveQueue.lock(() => loadFromAdapter(this as PersistenceHost, options));
+  }
+
+  // as in the original, `loaded` follows the callback; without one it is emitted before the promise resolves
+  private settleLoad(loading: Promise<string>, callback?: (err?: any) => void): Promise<void> {
+    return this.settleOrWarn(loading, callback, (message) => this.emit('loaded', message));
   }
 
   /** @deprecated Saves without going through the save queue. Use {@link Loki#saveDatabase}. */
@@ -1268,12 +1273,16 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
 
   // a failure without a callback must not crash the process as an unhandled rejection: it is reported
   // as a warning, and callers who await still get the rejection. A throwing listener is rethrown from a timer.
-  private settleOrWarn(promise: Promise<void>, callback?: (err?: any) => void): Promise<void> {
-    if (callback) {
-      return settle(promise, callback);
+  private settleOrWarn<T = void>(
+    promise: Promise<T>,
+    callback?: (err?: any) => void,
+    onSuccess?: (value: T) => void,
+  ): Promise<void> {
+    const settled = settle(promise, callback, onSuccess);
+    if (!callback) {
+      settled.catch((err) => invoke(() => this.emit('warning', err)));
     }
-    promise.catch((err) => invoke(() => this.emit('warning', err)));
-    return promise;
+    return settled;
   }
 
   /**
