@@ -332,17 +332,29 @@ export class LokiPartitioningAdapter {
     if (!container) {
       return;
     }
-    const manifest = readManifest(container, dbname);
+    let manifest: PartitionManifest | undefined;
+    let trusted = true;
+    try {
+      manifest = readManifest(container, dbname);
+    } catch (err) {
+      // an invalid manifest names nothing to trust: only the generation files found by listing go
+      if (!canListKeys(this.adapter)) {
+        throw err;
+      }
+      trusted = false;
+    }
     // probed before the container goes: paged keys are discovered by reading the storage
     const keys = new Set<string>(
-      manifest
-        ? manifestKeys(dbname, manifest.collections)
-        : await legacyKeys(
-            this.adapter,
-            dbname,
-            Array.isArray(container.collections) ? container.collections.length : 0,
-            this.legacyOptions(),
-          ),
+      !trusted
+        ? []
+        : manifest
+          ? manifestKeys(dbname, manifest.collections)
+          : await legacyKeys(
+              this.adapter,
+              dbname,
+              Array.isArray(container.collections) ? container.collections.length : 0,
+              this.legacyOptions(),
+            ),
     );
 
     await callAdapter(this.adapter, 'deleteDatabase', [dbname], 'write');

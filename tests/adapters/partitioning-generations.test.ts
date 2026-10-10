@@ -374,6 +374,41 @@ describe('LokiPartitioningAdapter generations', () => {
     }
   });
 
+  it('deletes a database with an invalid manifest through listing only', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'loki-generations-'));
+    try {
+      const name = join(dir, 'app.db');
+      const db = new Loki(name, { adapter: new LokiPartitioningAdapter(new LokiFsAdapter()) });
+      db.addCollection('a').insert({ x: 1 });
+      db.addCollection('b').insert({ y: 1 });
+      await db.saveDatabase();
+      await writeFile(join(dir, 'app.db.7'), 'user data');
+      const container = JSON.parse(await readFile(name, 'utf8'));
+      container.lokiPartitions.collections[0].files = ['7'];
+      await writeFile(name, JSON.stringify(container));
+
+      await new LokiPartitioningAdapter(new LokiFsAdapter()).deleteDatabase(name);
+
+      expect(await readdir(dir)).toEqual(['app.db.7']);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses to delete a database with an invalid manifest without listing', async () => {
+    const inner = new LokiMemoryAdapter();
+    await populated(inner);
+    const container = JSON.parse(inner.hashStore['g.db'].value);
+    container.lokiPartitions.generation = -1;
+    await inner.saveDatabase('g.db', JSON.stringify(container));
+    const keys = Object.keys(inner.hashStore).sort();
+
+    await expect(new LokiPartitioningAdapter(inner).deleteDatabase('g.db')).rejects.toThrow(
+      'malformed partition manifest',
+    );
+    expect(Object.keys(inner.hashStore).sort()).toEqual(keys);
+  });
+
   it('rejects a malformed manifest', async () => {
     const malformed: ((manifest: any) => void)[] = [
       (m) => {
