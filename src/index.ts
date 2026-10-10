@@ -56,7 +56,13 @@ export type {
   DynamicViewSortCriteriaSimple,
 } from './indexing/DynamicView';
 export type { ResultsetDataOptions, SimpleSortOptions, TransformStep } from './query/Resultset';
-export type { LokiPersistenceAdapter } from './types/adapter';
+export type {
+  AnyLokiAdapter,
+  LegacyLokiAdapter,
+  LokiAdapter,
+  LokiIncrementalAdapter,
+  LokiPersistenceAdapter,
+} from './types/adapter';
 export type { LokiDocument, LokiMeta } from './types/document';
 export type { LokiQuery, QueryOperators } from './types/query';
 export type { CloneMethod } from './utils/clone';

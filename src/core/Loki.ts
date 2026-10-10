@@ -3,7 +3,7 @@ import { LokiFsAdapter } from '../adapters/FsAdapter';
 import { LokiLocalStorageAdapter } from '../adapters/LocalStorageAdapter';
 import { LokiMemoryAdapter } from '../adapters/MemoryAdapter';
 import { LokiEventEmitter } from '../events/EventEmitter';
-import type { LokiPersistenceAdapter } from '../types/adapter';
+import type { AnyLokiAdapter } from '../types/adapter';
 import { deepFreeze } from '../utils/freeze';
 import { Utils } from '../utils/helpers';
 import { Collection, type CollectionOptions } from './Collection';
@@ -13,7 +13,7 @@ export interface LokiConfigOptions {
   env?: string;
   verbose?: boolean;
   persistenceMethod?: 'fs' | 'localStorage' | 'memory';
-  adapter?: LokiPersistenceAdapter | null;
+  adapter?: AnyLokiAdapter | null;
   autoload?: boolean;
   autoloadCallback?: (err?: any) => void;
   autosave?: boolean;
@@ -63,7 +63,7 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
   throttledSaves!: boolean;
   options!: LokiConfigOptions;
   persistenceMethod!: string | null | undefined;
-  persistenceAdapter!: LokiPersistenceAdapter | null;
+  persistenceAdapter!: AnyLokiAdapter | null;
   throttledSavePending!: boolean;
   throttledCallbacks!: any[];
   verbose!: boolean;
@@ -201,10 +201,10 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
       CORDOVA: 'localStorage',
       MEMORY: 'memory',
     };
-    const persistenceMethods: Record<string, new () => LokiPersistenceAdapter> = {
-      fs: LokiFsAdapter as unknown as new () => LokiPersistenceAdapter,
-      localStorage: LokiLocalStorageAdapter as unknown as new () => LokiPersistenceAdapter,
-      memory: LokiMemoryAdapter as unknown as new () => LokiPersistenceAdapter,
+    const persistenceMethods: Record<string, new () => AnyLokiAdapter> = {
+      fs: LokiFsAdapter as unknown as new () => AnyLokiAdapter,
+      localStorage: LokiLocalStorageAdapter as unknown as new () => AnyLokiAdapter,
+      memory: LokiMemoryAdapter as unknown as new () => AnyLokiAdapter,
     };
 
     this.options = {};
@@ -230,7 +230,7 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
       // if user passes adapter, set persistence mode to adapter and retain persistence adapter instance
       if (Object.hasOwn(this.options, 'adapter')) {
         this.persistenceMethod = 'adapter';
-        this.persistenceAdapter = options.adapter as LokiPersistenceAdapter;
+        this.persistenceAdapter = options.adapter as AnyLokiAdapter;
         this.options.adapter = null;
 
         // if true, will keep track of dirty ids
