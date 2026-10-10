@@ -184,6 +184,100 @@ describe('LokiPartitioningAdapter generations', () => {
     }
   });
 
+  it('rewrites every collection when switching back to the historical layout', async () => {
+    const inner = new LokiMemoryAdapter();
+    await populated(inner);
+    const historical = { generations: false };
+
+    const db = await Loki.open('g.db', {
+      adapter: new LokiPartitioningAdapter(inner, historical),
+    });
+    db.getCollection('a')?.insert({ x: 3 });
+    await db.saveDatabase();
+
+    const reopened = await Loki.open('g.db', {
+      adapter: new LokiPartitioningAdapter(inner, historical),
+    });
+    expect(
+      reopened
+        .getCollection('a')
+        ?.find()
+        .map((doc) => doc.x),
+    ).toEqual([1, 2, 3]);
+    expect(
+      reopened
+        .getCollection('b')
+        ?.find()
+        .map((doc) => doc.y),
+    ).toEqual([1]);
+  });
+
+  it('survives a failure at every step of the switch back to the historical layout', async () => {
+    for (let failAt = 1; failAt <= 3; failAt++) {
+      const inner = new FlakyMemoryAdapter();
+      await populated(inner);
+      const historical = { generations: false };
+      const db = await Loki.open('g.db', {
+        adapter: new LokiPartitioningAdapter(inner, historical),
+      });
+      db.getCollection('a')?.insert({ x: 3 });
+
+      inner.writes = 0;
+      inner.failAt = failAt;
+      await expect(db.saveDatabase()).rejects.toThrow(`write ${failAt} failed`);
+      inner.failAt = 0;
+
+      const reopened = await Loki.open('g.db', {
+        adapter: new LokiPartitioningAdapter(inner, historical),
+      });
+      expect(reopened.getCollection('a')?.count()).toBe(2);
+      expect(reopened.getCollection('b')?.count()).toBe(1);
+    }
+  });
+
+  it('removes the generation files once switched back to the historical layout', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'loki-generations-'));
+    try {
+      const name = join(dir, 'app.db');
+      const db = new Loki(name, { adapter: new LokiPartitioningAdapter(new LokiFsAdapter()) });
+      db.addCollection('a').insert({ x: 1 });
+      db.addCollection('b').insert({ y: 1 });
+      await db.saveDatabase();
+
+      const historical = await Loki.open(name, {
+        adapter: new LokiPartitioningAdapter(new LokiFsAdapter(), { generations: false }),
+      });
+      historical.getCollection('b')?.insert({ y: 2 });
+      await historical.saveDatabase();
+
+      expect((await readdir(dir)).sort()).toEqual(['app.db', 'app.db.0', 'app.db.1']);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reads each page of a paged historical database once when loading it', async () => {
+    const inner = new LokiMemoryAdapter();
+    const options = { paging: true, pageSize: 20 };
+    const legacy = new Loki('g.db', {
+      adapter: new LokiPartitioningAdapter(inner, { ...options, generations: false }),
+    });
+    legacy.addCollection('a').insert([{ x: 1 }, { x: 2 }, { x: 3 }]);
+    await legacy.saveDatabase();
+    const loads: string[] = [];
+    const load = inner.loadDatabase.bind(inner);
+    inner.loadDatabase = (key, callback) => {
+      loads.push(key);
+      return load(key, callback);
+    };
+
+    await Loki.open('g.db', { adapter: new LokiPartitioningAdapter(inner, options) });
+
+    const pageLoads = loads.filter((key) => key.startsWith('g.db.0.'));
+    expect(pageLoads.length).toBeGreaterThan(1);
+    expect(new Set(pageLoads).size).toBe(pageLoads.length);
+  });
+
   it('writes the historical format with generations: false', async () => {
     const inner = new LokiMemoryAdapter();
     const db = new Loki('g.db', {

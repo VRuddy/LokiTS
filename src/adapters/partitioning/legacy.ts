@@ -20,19 +20,27 @@ async function* documentLines(dbref: Loki, index: number): AsyncIterable<string>
   }
 }
 
-/** Fills the collections of `dbref` (loaded from a container without manifest) from historical partitions. */
+/**
+ * Fills the collections of `dbref` (loaded from a container without manifest) from historical
+ * partitions, and returns the keys of the database, as {@link legacyKeys} would.
+ */
 export async function loadLegacyCollections(
   inner: object,
   dbname: string,
   dbref: Loki,
   options: LegacyOptions,
-): Promise<void> {
+): Promise<string[]> {
+  const keys: string[] = [];
   for (let index = 0; index < dbref.collections.length; index++) {
     const collection = dbref.collections[index];
     if (options.format === 'lines') {
       collection.data = await readLines(inner, partitionKey(dbname, index));
     } else if (options.paging) {
-      collection.data = await readPages(inner, dbname, index, options.delimiter);
+      const pages: string[] = [];
+      collection.data = await readPages(inner, dbname, index, options.delimiter, pages);
+      // pages left past the last one by a save of a once longer collection
+      keys.push(...pages, ...(await probePages(inner, dbname, index, pages.length)));
+      continue;
     } else {
       const result = await callAdapter(
         inner,
@@ -48,7 +56,9 @@ export async function loadLegacyCollections(
         collectionIndex: index,
       });
     }
+    keys.push(partitionKey(dbname, index));
   }
+  return keys;
 }
 
 async function readLines(inner: object, key: string): Promise<any[]> {
@@ -82,6 +92,7 @@ async function readPages(
   dbname: string,
   index: number,
   delimiter: string,
+  keys: string[],
 ): Promise<any[]> {
   const docs: any[] = [];
   for (let page = 0; ; page++) {
@@ -90,6 +101,7 @@ async function readPages(
     if (result === null || result === undefined) {
       throw missingFile(key);
     }
+    keys.push(key);
     const rows = (result as string).split(delimiter);
     // a final empty row marks the last page; an empty collection is a lone delimiter
     const isLastPage = rows[rows.length - 1] === '';
@@ -108,22 +120,26 @@ async function readPages(
   }
 }
 
-/** Historical save: container first, then each dirty collection, without generations. */
+/**
+ * Historical save: container first, then each dirty collection, without generations.
+ * `everyCollection` (leaving a manifest) writes every collection, then the container: the
+ * manifest stays the committed state until the historical layout is complete.
+ */
 export async function saveLegacy(
   inner: object,
   dbname: string,
   dbref: Loki,
   options: LegacyOptions,
+  everyCollection = false,
 ): Promise<void> {
   const container = buildContainer(dbref);
-  if (options.format === 'lines') {
-    await callAdapter(inner, 'saveDatabase', [dbname, `${container}\n`], 'write');
-  } else {
-    await callAdapter(inner, 'saveDatabase', [dbname, container], 'write');
+  const text = options.format === 'lines' ? `${container}\n` : container;
+  if (!everyCollection) {
+    await callAdapter(inner, 'saveDatabase', [dbname, text], 'write');
   }
 
   for (let index = 0; index < dbref.collections.length; index++) {
-    if (!dbref.collections[index].dirty) {
+    if (!everyCollection && !dbref.collections[index].dirty) {
       continue;
     }
     if (options.format === 'lines') {
@@ -138,6 +154,10 @@ export async function saveLegacy(
       });
       await callAdapter(inner, 'saveDatabase', [partitionKey(dbname, index), result], 'write');
     }
+  }
+
+  if (everyCollection) {
+    await callAdapter(inner, 'saveDatabase', [dbname, text], 'write');
   }
 }
 
@@ -206,17 +226,28 @@ export async function legacyKeys(
   const keys: string[] = [];
   for (let index = 0; index < collectionCount; index++) {
     if (options.format === 'partitioning' && options.paging) {
-      for (let page = 0; ; page++) {
-        const key = pageKey(dbname, index, page);
-        const value = await callAdapter(inner, 'loadDatabase', [key], 'load');
-        if (value === null || value === undefined) {
-          break;
-        }
-        keys.push(key);
-      }
+      keys.push(...(await probePages(inner, dbname, index, 0)));
     } else {
       keys.push(partitionKey(dbname, index));
     }
   }
   return keys;
+}
+
+/** Keys of the consecutive pages that exist from page `from` on. */
+async function probePages(
+  inner: object,
+  dbname: string,
+  index: number,
+  from: number,
+): Promise<string[]> {
+  const keys: string[] = [];
+  for (let page = from; ; page++) {
+    const key = pageKey(dbname, index, page);
+    const value = await callAdapter(inner, 'loadDatabase', [key], 'load');
+    if (value === null || value === undefined) {
+      return keys;
+    }
+    keys.push(key);
+  }
 }

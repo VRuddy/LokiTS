@@ -158,16 +158,10 @@ export class LokiPartitioningAdapter {
     const manifest = readManifest(container);
 
     if (!manifest) {
-      await loadLegacyCollections(this.adapter, dbname, dbref, this.legacyOptions());
       this.states.set(dbname, {
         generation: 0,
         collections: [],
-        legacyKeys: await legacyKeys(
-          this.adapter,
-          dbname,
-          dbref.collections.length,
-          this.legacyOptions(),
-        ),
+        legacyKeys: await loadLegacyCollections(this.adapter, dbname, dbref, this.legacyOptions()),
       });
       return dbref;
     }
@@ -191,7 +185,7 @@ export class LokiPartitioningAdapter {
 
   private async save(dbname: string, dbref: Loki): Promise<void> {
     if (!this.options.generations) {
-      return saveLegacy(this.adapter, dbname, dbref, this.legacyOptions());
+      return this.saveHistorical(dbname, dbref);
     }
 
     const previous = this.states.get(dbname) ?? (await this.readCommittedState(dbname));
@@ -229,6 +223,31 @@ export class LokiPartitioningAdapter {
     await this.cleanUp(dbname, manifest, previous).catch(() => {
       // the commit succeeded; leftover files are orphans removed by a later save
     });
+  }
+
+  /** A database last committed through a manifest is rewritten whole, so the historical layout is complete. */
+  private async saveHistorical(dbname: string, dbref: Loki): Promise<void> {
+    const committed = await this.committedManifest(dbname);
+    await saveLegacy(this.adapter, dbname, dbref, this.legacyOptions(), committed !== undefined);
+    if (committed) {
+      this.states.delete(dbname);
+      await deleteAll(
+        this.adapter,
+        committed.flatMap((entry) => entry.files),
+      ).catch(() => {
+        // the historical layout is complete; the generation files are only orphans
+      });
+    }
+  }
+
+  /** The collections of the manifest the database was last committed through, if any. */
+  private async committedManifest(dbname: string): Promise<PartitionEntry[] | undefined> {
+    const state = this.states.get(dbname);
+    if (state) {
+      return state.generation > 0 ? state.collections : undefined;
+    }
+    const container = await this.readContainer(dbname);
+    return container ? readManifest(container)?.collections : undefined;
   }
 
   private async readCommittedState(dbname: string): Promise<CommittedState> {
