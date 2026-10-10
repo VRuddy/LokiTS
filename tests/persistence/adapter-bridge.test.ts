@@ -24,6 +24,41 @@ describe('callAdapter', () => {
     await expect(callAdapter(adapter, 'load', ['db'], 'load')).rejects.toThrow('first');
   });
 
+  it('follows only the callback of a method that declares it, whatever it returns', async () => {
+    const adapter = {
+      load: (_n: string, cb: (v: unknown) => void) =>
+        Promise.resolve().then(() => {
+          setTimeout(() => cb('data'), 5);
+        }),
+      save: (_n: string, _d: string, cb: (e?: unknown) => void) =>
+        Promise.resolve().then(() => {
+          setTimeout(() => cb(new Error('disk')), 5);
+        }),
+    };
+    await expect(callAdapter(adapter, 'load', ['db'], 'load')).resolves.toBe('data');
+    await expect(callAdapter(adapter, 'save', ['db', 'x'], 'write')).rejects.toThrow('disk');
+  });
+
+  it('follows the first to settle when the method does not declare a callback', async () => {
+    const adapter = {
+      load: (...args: unknown[]) => {
+        const cb = args[args.length - 1] as (v: unknown) => void;
+        setTimeout(() => cb('late callback'), 20);
+        return new Promise((resolve) => setTimeout(() => resolve('early promise'), 1));
+      },
+    };
+    await expect(callAdapter(adapter, 'load', ['db'], 'load')).resolves.toBe('early promise');
+  });
+
+  it('rejects when the promise of a callback-declaring method rejects', async () => {
+    const adapter = {
+      load: async (_n: string, _cb: (v: unknown) => void) => {
+        throw new Error('async');
+      },
+    };
+    await expect(callAdapter(adapter, 'load', ['db'], 'load')).rejects.toThrow('async');
+  });
+
   it('ignores a callback called twice', async () => {
     const adapter = {
       save: (_n: string, _d: string, cb: (e?: unknown) => void) => {

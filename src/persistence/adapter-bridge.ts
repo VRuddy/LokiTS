@@ -15,8 +15,10 @@ const isWriteSuccess = (value: unknown): boolean => {
 };
 
 /**
- * Calls a promise or callback adapter method and returns a promise. The adapter style is not detected:
- * a callback is always appended, and whichever of the callback and the returned promise settles first wins.
+ * Calls a promise or callback adapter method and returns a promise. A callback is always appended. A method
+ * that declares it (`fn.length > args.length`) is followed by its callback only, so a promise it returns
+ * early (a callback adapter written as a promise chain) cannot win; a rejection still fails the call. Any
+ * other method is followed by whichever of the callback and the returned promise settles first.
  */
 export function callAdapter(
   target: object,
@@ -48,11 +50,13 @@ export function callAdapter(
       });
 
     let returned: unknown;
+    let declaresCallback = false;
     try {
       const fn = (target as Record<string, unknown>)[method];
       if (typeof fn !== 'function') {
         throw new TypeError(`adapter has no ${method}() method`);
       }
+      declaresCallback = fn.length > args.length;
       returned = fn.apply(target, [...args, onCallback]);
     } catch (err) {
       settle(() => reject(err));
@@ -61,7 +65,11 @@ export function callAdapter(
 
     if (isThenable(returned)) {
       returned.then(
-        (value) => settle(() => resolve(kind === 'load' ? value : undefined)),
+        (value) => {
+          if (!declaresCallback) {
+            settle(() => resolve(kind === 'load' ? value : undefined));
+          }
+        },
         (err) => settle(() => reject(err)),
       );
     }
