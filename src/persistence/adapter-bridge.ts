@@ -16,9 +16,10 @@ const isWriteSuccess = (value: unknown): boolean => {
 
 /**
  * Calls a promise or callback adapter method and returns a promise. A callback is always appended. A method
- * that declares it (`fn.length > args.length`) is followed by its callback only, so a promise it returns
- * early (a callback adapter written as a promise chain) cannot win; a rejection still fails the call. Any
- * other method is followed by whichever of the callback and the returned promise settles first.
+ * that declares it (`fn.length > args.length`) is followed by its callback, so a promise it returns early
+ * (a callback adapter written as a promise chain, resolving undefined) cannot win; a rejection still fails
+ * the call, and a load promise resolving a value (data or null) is accepted. Any other method is followed
+ * by whichever of the callback and the returned promise settles first.
  */
 export function callAdapter(
   target: object,
@@ -66,7 +67,7 @@ export function callAdapter(
     if (isThenable(returned)) {
       returned.then(
         (value) => {
-          if (!declaresCallback) {
+          if (!declaresCallback || (kind === 'load' && value !== undefined)) {
             settle(() => resolve(kind === 'load' ? value : undefined));
           }
         },

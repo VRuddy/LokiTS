@@ -39,6 +39,15 @@ describe('callAdapter', () => {
     await expect(callAdapter(adapter, 'save', ['db', 'x'], 'write')).rejects.toThrow('disk');
   });
 
+  it('accepts data resolved by a promise load that declares an extra parameter', async () => {
+    const adapter = {
+      load: async (_n: string, _opts?: unknown) => 'data',
+      missing: async (_n: string, _opts?: unknown) => null,
+    };
+    await expect(callAdapter(adapter, 'load', ['db'], 'load')).resolves.toBe('data');
+    await expect(callAdapter(adapter, 'missing', ['db'], 'load')).resolves.toBeNull();
+  });
+
   it('follows the first to settle when the method does not declare a callback', async () => {
     const adapter = {
       load: (...args: unknown[]) => {

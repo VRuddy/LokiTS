@@ -1,6 +1,10 @@
 import type { Loki } from '../core/Loki';
 
-/** Promise-based adapter. Without `mode` it receives the database serialized as a string. */
+/**
+ * Promise-based adapter. Without `mode` it receives the database serialized as a string.
+ * A parameter declared after the documented ones is treated as a callback and must be called: put options
+ * in the constructor or in a default-valued parameter (not counted by `fn.length`).
+ */
 export interface LokiAdapter {
   mode?: 'normal' | 'reference';
   /** Resolves to the stored data, or `null`/`undefined` when the database does not exist yet. */
@@ -11,7 +15,11 @@ export interface LokiAdapter {
   deleteDatabase?(dbname: string): Promise<void>;
 }
 
-/** Adapter that only writes what changed; it asks for a copy of the database when it is ready. */
+/**
+ * Adapter that only writes what changed; it asks for a copy of the database when it is ready.
+ * A parameter declared after the documented ones is treated as a callback and must be called: put options
+ * in the constructor or in a default-valued parameter (not counted by `fn.length`).
+ */
 export interface LokiIncrementalAdapter {
   mode: 'incremental';
   loadDatabase(dbname: string): Promise<object | null | undefined>;

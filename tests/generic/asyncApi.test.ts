@@ -249,6 +249,18 @@ describe('save requested during a failing load', () => {
 });
 
 describe('Loki.open', () => {
+  it('opens through a promise adapter that declares an extra load parameter', async () => {
+    const stored = new Loki('x.db');
+    stored.addCollection('c').insert({ a: 1 });
+    const data = stored.serialize();
+    const adapter = {
+      loadDatabase: async (name: string, _opts?: unknown) => (name === 'x.db' ? data : null),
+    };
+
+    expect((await Loki.open('x.db', { adapter })).getCollection('c')?.count()).toBe(1);
+    expect((await Loki.open('missing.db', { adapter })).listCollections()).toEqual([]);
+  });
+
   it('opens an existing database', async () => {
     const adapter = new LokiMemoryAdapter();
     const source = new Loki('o.db', { adapter });
