@@ -236,7 +236,7 @@ describe('loki', () => {
         { a: 2, b: 3 },
         { a: 3, b: 4 },
       ]);
-      expect(Array.isArray(objs));
+      expect(Array.isArray(objs)).toBe(true);
       objs.forEach((o) => {
         expect(Object.hasOwn(o, 'meta')).toEqual(true);
         expect(Object.hasOwn(o, '$loki')).toEqual(true);
@@ -298,7 +298,7 @@ describe('loki', () => {
         { a: 2, b: 3 },
         { a: 3, b: 4 },
       ]);
-      expect(Array.isArray(objs));
+      expect(Array.isArray(objs)).toBe(true);
       objs.forEach((o) => {
         expect(Object.hasOwn(o, 'meta')).toEqual(false);
         expect(Object.hasOwn(o, '$loki')).toEqual(true);

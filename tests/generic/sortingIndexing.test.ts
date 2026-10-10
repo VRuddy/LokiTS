@@ -334,21 +334,21 @@ describe('sorting and indexing', () => {
 
       expect(len).toBe(6);
       for (idx = 0; idx < len - 1; idx++) {
-        expect(loki.LokiOps.$lte(results[idx]['a'], results[idx + 1]['a']));
+        expect(loki.LokiOps.$lte(results[idx]['a'], results[idx + 1]['a'])).toBe(true);
       }
 
       // test explicit disable index intercept simplesort code path
       results = rss.chain().find({ b: 1 }).simplesort('a', { disableIndexIntercept: true }).data();
       expect(len).toBe(6);
       for (idx = 0; idx < len - 1; idx++) {
-        expect(loki.LokiOps.$lte(results[idx]['a'], results[idx + 1]['a']));
+        expect(loki.LokiOps.$lte(results[idx]['a'], results[idx + 1]['a'])).toBe(true);
       }
 
       // test 'smart' simplesort
       results = rss.chain().find({ b: 1 }).simplesort('a').data();
       expect(len).toBe(6);
       for (idx = 0; idx < len - 1; idx++) {
-        expect(loki.LokiOps.$lte(results[idx]['a'], results[idx + 1]['a']));
+        expect(loki.LokiOps.$lte(results[idx]['a'], results[idx + 1]['a'])).toBe(true);
       }
     });
   });
@@ -378,7 +378,7 @@ describe('sorting and indexing', () => {
 
       expect(len).toBe(6);
       for (idx = 0; idx < len - 1; idx++) {
-        expect(loki.LokiOps.$lte(results[idx]['a'], results[idx + 1]['a']));
+        expect(loki.LokiOps.$lte(results[idx]['a'], results[idx + 1]['a'])).toBe(true);
       }
     });
   });

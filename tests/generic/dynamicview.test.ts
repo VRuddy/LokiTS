@@ -245,7 +245,7 @@ describe('dynamicviews', () => {
       var results = dv.data();
       expect(results.length).toBe(5);
       for (idx = 0; idx < results.length - 1; idx++) {
-        expect(loki.LokiOps.$lte(results[idx]['b'], results[idx + 1]['b']));
+        expect(loki.LokiOps.$lte(results[idx]['b'], results[idx + 1]['b'])).toBe(true);
       }
 
       // remove dynamic view
@@ -261,7 +261,7 @@ describe('dynamicviews', () => {
       var results = dv.data();
       expect(results.length).toBe(5);
       for (idx = 0; idx < results.length - 1; idx++) {
-        expect(results[idx]['b'] <= results[idx + 1]['b']);
+        expect(results[idx]['b'] <= results[idx + 1]['b']).toBe(true);
       }
 
       // remove dynamic view
@@ -276,7 +276,7 @@ describe('dynamicviews', () => {
       var results = dv.data();
       expect(results.length).toBe(5);
       for (idx = 0; idx < results.length - 1; idx++) {
-        expect(results[idx]['b'] <= results[idx + 1]['b']);
+        expect(results[idx]['b'] <= results[idx + 1]['b']).toBe(true);
       }
 
       // remove dynamic view
@@ -291,7 +291,7 @@ describe('dynamicviews', () => {
       var results = dv.data();
       expect(results.length).toBe(5);
       for (idx = 0; idx < results.length - 1; idx++) {
-        expect(loki.LokiOps.$lte(results[idx]['b'], results[idx + 1]['b']));
+        expect(loki.LokiOps.$lte(results[idx]['b'], results[idx + 1]['b'])).toBe(true);
       }
     });
   });
