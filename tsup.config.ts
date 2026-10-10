@@ -9,4 +9,5 @@ export default defineConfig({
   clean: true,
   treeshake: true,
   target: 'es2022',
+  onSuccess: 'node scripts/cjs-interop.mjs',
 });

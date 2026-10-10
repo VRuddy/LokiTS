@@ -58,3 +58,14 @@ for (const [format, load] of [
     assert.equal(db2.getCollection('c').count(), 1);
   });
 }
+
+test("CJS : require() renvoie le constructeur, comme le module lokijs d'origine", () => {
+  const Loki = require('../dist/index.cjs');
+  const db = new Loki('shape.db');
+
+  assert.equal(typeof Loki, 'function');
+  assert.equal(typeof db.addCollection, 'function');
+  assert.equal(Loki.Collection, Loki.loki.Collection);
+  assert.equal(Loki.default, Loki);
+  assert.equal(typeof Loki.LokiOps.$eq, 'function');
+});
