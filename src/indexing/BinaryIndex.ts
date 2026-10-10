@@ -487,7 +487,6 @@ export function calculateBinaryRange<T extends object>(
   let lbound: number;
   let lval: any;
   let ubound: number;
-  let uval: any;
 
   // when no documents are in collection, return empty range condition
   if (rcd.length === 0) {
@@ -616,12 +615,10 @@ export function calculateBinaryRange<T extends object>(
     case '$lte':
     case '$gt':
       ubound = c.calculateRangeEnd(prop, val, usingDotNotation);
-      uval = Utils.getIn(rcd[index[ubound]], prop, usingDotNotation);
       break;
     default:
       break;
   }
-  void uval;
 
   switch (op) {
     case '$eq':
