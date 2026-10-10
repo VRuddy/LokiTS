@@ -274,3 +274,35 @@ describe('Loki.open', () => {
     });
   });
 });
+
+describe('LokiMemoryAdapter', () => {
+  it('returns promises', async () => {
+    const adapter = new LokiMemoryAdapter();
+
+    await adapter.saveDatabase('m.db', 'data');
+    await expect(adapter.loadDatabase('m.db')).resolves.toBe('data');
+    await adapter.deleteDatabase('m.db');
+    await expect(adapter.loadDatabase('m.db')).resolves.toBeNull();
+  });
+
+  it('still calls back synchronously without asyncResponses', () => {
+    const adapter = new LokiMemoryAdapter();
+    const seen: unknown[] = [];
+
+    adapter.saveDatabase('m.db', 'data', () => seen.push('saved'));
+    adapter.loadDatabase('m.db', (value) => seen.push(value));
+
+    expect(seen).toEqual(['saved', 'data']);
+  });
+
+  it('answers after asyncTimeout with asyncResponses', async () => {
+    const adapter = new LokiMemoryAdapter({ asyncResponses: true, asyncTimeout: 5 });
+    const seen: unknown[] = [];
+
+    const saving = adapter.saveDatabase('m.db', 'data', () => seen.push('saved'));
+    expect(seen).toEqual([]);
+
+    await saving;
+    expect(seen).toEqual(['saved']);
+  });
+});

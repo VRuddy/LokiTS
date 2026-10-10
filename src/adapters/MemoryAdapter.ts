@@ -30,82 +30,52 @@ export class LokiMemoryAdapter {
     }
   }
 
-  /**
-   * Loads a serialized database from its in-memory store.
-   * (Loki persistence adapter interface function)
-   *
-   * @param dbname - name of the database (filename/keyname)
-   * @param callback - adapter callback to return load result to caller
-   */
-  loadDatabase(dbname: string, callback: (value: string | null) => void): void {
-    if (this.options.asyncResponses) {
-      setTimeout(() => {
-        if (Object.hasOwn(this.hashStore, dbname)) {
-          callback(this.hashStore[dbname].value);
-        } else {
-          // database doesn't exist, return falsy
-          callback(null);
-        }
-      }, this.options.asyncTimeout);
-    } else {
-      if (Object.hasOwn(this.hashStore, dbname)) {
-        // database doesn't exist, return falsy
-        callback(this.hashStore[dbname].value);
-      } else {
-        callback(null);
+  /** Resolves to the stored string, or `null` if the database does not exist. */
+  loadDatabase(dbname: string, callback?: (value: string | null) => void): Promise<string | null> {
+    const respond = () => {
+      const value = Object.hasOwn(this.hashStore, dbname) ? this.hashStore[dbname].value : null;
+      if (callback) {
+        callback(value);
       }
-    }
+      return value;
+    };
+    return this.answer(respond);
   }
 
-  /**
-   * Saves a serialized database to its in-memory store.
-   * (Loki persistence adapter interface function)
-   *
-   * @param dbname - name of the database (filename/keyname)
-   * @param dbstring - serialized database
-   * @param callback - adapter callback to return load result to caller
-   */
-  saveDatabase(dbname: string, dbstring: string, callback: () => void): void {
-    let saveCount: number;
-
-    if (this.options.asyncResponses) {
-      setTimeout(() => {
-        saveCount = Object.hasOwn(this.hashStore, dbname) ? this.hashStore[dbname].savecount : 0;
-
-        this.hashStore[dbname] = {
-          savecount: saveCount + 1,
-          lastsave: new Date(),
-          value: dbstring,
-        };
-
-        callback();
-      }, this.options.asyncTimeout);
-    } else {
-      saveCount = Object.hasOwn(this.hashStore, dbname) ? this.hashStore[dbname].savecount : 0;
-
+  saveDatabase(dbname: string, dbstring: string, callback?: () => void): Promise<void> {
+    const respond = () => {
+      const saveCount = Object.hasOwn(this.hashStore, dbname)
+        ? this.hashStore[dbname].savecount
+        : 0;
       this.hashStore[dbname] = {
         savecount: saveCount + 1,
         lastsave: new Date(),
         value: dbstring,
       };
-
-      callback();
-    }
+      if (callback) {
+        callback();
+      }
+    };
+    return this.answer(respond);
   }
 
-  /**
-   * Deletes a database from its in-memory store.
-   *
-   * @param dbname - name of the database (filename/keyname)
-   * @param callback - function to call when done
-   */
-  deleteDatabase(dbname: string, callback?: () => void): void {
+  deleteDatabase(dbname: string, callback?: () => void): Promise<void> {
     if (Object.hasOwn(this.hashStore, dbname)) {
       delete this.hashStore[dbname];
     }
-
     if (typeof callback === 'function') {
       callback();
     }
+    return Promise.resolve();
+  }
+
+  // Without asyncResponses the callback runs synchronously, as in the original adapter.
+  private answer<T>(respond: () => T): Promise<T> {
+    if (!this.options.asyncResponses) {
+      return Promise.resolve(respond());
+    }
+    return new Promise((resolve) => {
+      setTimeout(() => resolve(respond()), this.options.asyncTimeout);
+    });
   }
 }
