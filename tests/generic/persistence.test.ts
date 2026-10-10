@@ -900,3 +900,17 @@ describe('verify serializereplacer', () => {
     expect(typeof ndb.collections[0].lokiConsoleWrapper.log).toEqual('function');
   });
 });
+
+describe('throttledSaveDrain', () => {
+  it('calls back once when throttled saves are disabled', () => {
+    const db = new loki('drain.db', {
+      adapter: new loki.LokiMemoryAdapter(),
+      throttledSaves: false,
+    });
+    const results: boolean[] = [];
+
+    db.throttledSaveDrain((success: boolean) => results.push(success));
+
+    expect(results).toEqual([true]);
+  });
+});

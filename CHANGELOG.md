@@ -8,6 +8,7 @@
 * new toolchain: pnpm, Biome, Vitest, tsup (ESM + CJS + d.ts), strict TypeScript config
 * legacy Jasmine/Karma specs ported to Vitest (`tests/`); Karma, PhantomJS, jshint, istanbul, uglify removed
 * fix: removeListener no longer removes the last listener when given one that was never registered
+* fix: throttledSaveDrain called its callback twice when throttledSaves was false
 * BREAKING: core classes are now ES classes; ES5-style subclassing via `Collection.apply(this, args)` / `X.prototype = new Collection()` no longer works, use `class extends`
 * supported runtime: Node >= 20 (CI also covers 22, 24, 26); development requires Node >= 22.12
 

@@ -1171,6 +1171,7 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
 
     if (!this.throttledSaves) {
       callback(true);
+      return;
     }
 
     options = options || {};
