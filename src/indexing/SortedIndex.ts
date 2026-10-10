@@ -1,6 +1,8 @@
 // Ported from LokiJS (lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
 import { type BinarySearchResult, BSonSort, binarySearch } from './BinaryIndex';
 
+const defaultSort = (a: any, b: any): number => (a < b ? -1 : a > b ? 1 : 0);
+
 export class SortedIndex {
   field: string;
   keys!: any[];
@@ -10,10 +12,15 @@ export class SortedIndex {
 
   constructor(sortedField: string) {
     this.field = sortedField;
+    this.keys = [];
+    this.values = [];
+    this.sort = defaultSort;
+    this.bs = BSonSort(defaultSort);
   }
 
   // and allow override of the default sort
   setSort(fun: (a: any, b: any) => number): void {
+    this.sort = fun;
     this.bs = BSonSort(fun);
   }
 
@@ -87,12 +94,3 @@ export class SortedIndex {
     this.values = [];
   }
 }
-
-// Defaults live on the prototype (shared state), exactly as in the original implementation.
-SortedIndex.prototype.keys = [];
-SortedIndex.prototype.values = [];
-// set the default sort
-SortedIndex.prototype.sort = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
-SortedIndex.prototype.bs = function (this: SortedIndex) {
-  return BSonSort(this.sort);
-};
