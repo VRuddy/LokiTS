@@ -13,7 +13,7 @@
 * fix: stages and commitLog were shared by every collection in the process; each collection now has its own
 * fix: KeyValueStore and SortedIndex shared their keys and values between instances, and KeyValueStore.set never found an existing key; setSort now applies to every operation
 * BREAKING: core classes are now ES classes; ES5-style subclassing via `Collection.apply(this, args)` / `X.prototype = new Collection()` no longer works, use `class extends`
-* supported runtime: Node >= 20 (CI also covers 22, 24, 26); development requires Node >= 22.12
+* supported runtime: Node >= 20.16 (CI also covers 22, 24, 26); development requires Node >= 22.12
 
 The entries below are the historical LokiJS changelog retained for provenance.
 
