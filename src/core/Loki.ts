@@ -182,16 +182,20 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
 
   /**
    * Creates a database and loads it from its adapter. A database that does not exist yet opens empty;
-   * a real adapter error or corrupted data rejects. Replaces the `autoload` options.
+   * a real adapter error or corrupted data rejects. Replaces the `autoload` options; `autosave` starts once the load succeeded.
    *
    * @example
    * const db = await Loki.open('app.db', { adapter: new LokiFsAdapter() });
    */
   static async open(filename: string, options: LokiConfigOptions = {}): Promise<Loki> {
-    const { autoload: _autoload, autoloadCallback: _autoloadCallback, ...rest } = options;
+    const { autoload: _autoload, autoloadCallback: _autoloadCallback, autosave, ...rest } = options;
     const db = new Loki(filename, rest);
     if (db.persistenceAdapter) {
       await db.loadDatabase(rest);
+    }
+    // enabled after the load so a rejected open leaves no timer behind
+    if (autosave) {
+      db.autosaveEnable(rest, rest.autosaveCallback);
     }
     return db;
   }

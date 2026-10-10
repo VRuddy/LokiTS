@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Loki, LokiMemoryAdapter } from '../../src';
 import { flush, ManualAdapter, TimedAdapter } from '../helpers/fake-adapters';
 
@@ -223,5 +223,54 @@ describe('Loki.open', () => {
     await flush(20);
 
     expect(loads).toBe(1);
+  });
+
+  describe('autosave', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('leaves no interval behind when the load rejects', async () => {
+      const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+      const adapter = { loadDatabase: async () => '{corrupted' };
+
+      await expect(
+        Loki.open('bad.db', { adapter, autosave: true, autosaveInterval: 5 }),
+      ).rejects.toBeInstanceOf(SyntaxError);
+
+      expect(setIntervalSpy).not.toHaveBeenCalled();
+    });
+
+    it('starts autosave once the load has succeeded', async () => {
+      const adapter = new LokiMemoryAdapter();
+
+      const db = await Loki.open('auto.db', { adapter, autosave: true, autosaveInterval: 5 });
+      try {
+        expect(db.autosave).toBe(true);
+        db.addCollection('users').insert({ name: 'odin' });
+        await flush(20);
+
+        expect(adapter.hashStore['auto.db'].savecount).toBeGreaterThanOrEqual(1);
+      } finally {
+        db.autosaveDisable();
+      }
+    });
+
+    it('leaves the caller options untouched', async () => {
+      const options = {
+        adapter: new LokiMemoryAdapter(),
+        autosave: true,
+        autosaveInterval: 5,
+        autoload: true,
+      };
+      const keys = Object.keys(options);
+
+      const db = await Loki.open('opts.db', options);
+      db.autosaveDisable();
+
+      expect(Object.keys(options)).toEqual(keys);
+      expect(options.autosave).toBe(true);
+      expect(options.autoload).toBe(true);
+    });
   });
 });
