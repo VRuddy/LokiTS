@@ -42,7 +42,17 @@ export interface LokiConfigOptions {
  * @param options.throttledSaves - (default: true) debounces multiple calls to to saveDatabase reducing number of disk I/O operations
  *                                  and guaranteeing proper serialization of the calls.
  */
-export class Loki extends LokiEventEmitter {
+export interface LokiEvents {
+  init: [];
+  loaded: [message: string];
+  flushChanges: [];
+  close: [];
+  changes: [];
+  warning: [message: string];
+  [event: string]: unknown[];
+}
+
+export class Loki extends LokiEventEmitter<LokiEvents> {
   filename!: string;
   collections!: Collection[];
   databaseVersion!: number;

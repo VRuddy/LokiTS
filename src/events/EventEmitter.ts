@@ -1,33 +1,21 @@
-// Ported from LokiJS (src/lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
-/**
- * LokiEventEmitter is a minimalist version of EventEmitter. It enables any
- * constructor that inherits EventEmitter to emit events and trigger
- * listeners that have been added to the event through the on(event, callback) method
- *
- * @constructor LokiEventEmitter
- */
-export class LokiEventEmitter {
-  /**
-   * a hashmap, with each property being an array of callbacks
-   */
-  events!: { [eventName: string]: Array<(...args: any[]) => any> };
+// Ported from LokiJS (lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
+/** Maps each event name to the tuple of arguments its listeners receive. */
+export type LokiEventMap = Record<string, unknown[]>;
 
-  /**
-   * boolean determines whether or not the callbacks associated with each event
-   * should happen in an async fashion or not
-   * Default is false, which means events are synchronous
-   */
+type Listener<A extends unknown[]> = (...args: A) => unknown;
+
+/**
+ * Minimal synchronous (or setTimeout-async) event emitter. Emitting an event that was never
+ * registered in `events` throws, so subclasses pre-declare their event names in the constructor.
+ */
+export class LokiEventEmitter<E extends LokiEventMap = LokiEventMap> {
+  events!: { [K in keyof E]?: Array<Listener<E[K]>> };
+
+  /** When true, listeners run in a setTimeout instead of synchronously. */
   asyncListeners!: boolean;
 
-  /**
-   * on(eventName, listener) - adds a listener to the queue of callbacks associated to an event
-   * @param eventName - the name(s) of the event(s) to listen to
-   * @param listener - callback function of listener to attach
-   * @returns the index of the callback in the array of listeners for a particular event
-   */
-  on(eventName: string | string[], listener: (...args: any[]) => any): any {
-    let event: Array<(...args: any[]) => any>;
-
+  /** Adds a listener and returns it. An array of names attaches it to each event. */
+  on<K extends keyof E & string>(eventName: K | K[], listener: Listener<E[K]>): Listener<E[K]> {
     if (Array.isArray(eventName)) {
       eventName.forEach((currentEventName) => {
         this.on(currentEventName, listener);
@@ -35,7 +23,7 @@ export class LokiEventEmitter {
       return listener;
     }
 
-    event = this.events[eventName];
+    let event = this.events[eventName];
     if (!event) {
       event = this.events[eventName] = [];
     }
@@ -43,17 +31,12 @@ export class LokiEventEmitter {
     return listener;
   }
 
-  /**
-   * emit(eventName, data) - emits a particular event
-   * with the option of passing optional parameters which are going to be processed by the callback
-   * provided signatures match (i.e. if passing emit(event, arg0, arg1) the listener should take two parameters)
-   * @param eventName - the name of the event
-   * @param args - optional objects passed with the event
-   */
-  emit(eventName: string, ...args: any[]): void {
-    if (eventName && this.events[eventName]) {
-      if (this.events[eventName].length) {
-        this.events[eventName].forEach((listener) => {
+  /** Calls every listener of `eventName`; throws if the event is not defined. */
+  emit<K extends keyof E & string>(eventName: K, ...args: E[K]): void {
+    const listeners = eventName ? this.events[eventName] : undefined;
+    if (listeners) {
+      if (listeners.length) {
+        listeners.forEach((listener) => {
           if (this.asyncListeners) {
             setTimeout(() => {
               listener.apply(this, args);
@@ -68,12 +51,8 @@ export class LokiEventEmitter {
     }
   }
 
-  /**
-   * removeListener() - removes the listener at position 'index' from the event 'eventName'
-   * @param eventName - the name(s) of the event(s) which the listener is attached to
-   * @param listener - the listener callback function to remove from emitter
-   */
-  removeListener(eventName: string | string[], listener: (...args: any[]) => any): void {
+  /** Removes a listener from one event, or from each of an array of events. */
+  removeListener<K extends keyof E & string>(eventName: K | K[], listener: Listener<E[K]>): void {
     if (Array.isArray(eventName)) {
       eventName.forEach((currentEventName) => {
         this.removeListener(currentEventName, listener);
@@ -82,17 +61,15 @@ export class LokiEventEmitter {
       return;
     }
 
-    if (this.events[eventName]) {
-      const listeners = this.events[eventName];
+    const listeners = this.events[eventName];
+    if (listeners) {
       listeners.splice(listeners.indexOf(listener), 1);
     }
   }
 }
 
-// Alias of LokiEventEmitter.prototype.on
-// addListener(eventName, listener) - adds a listener to the queue of callbacks associated to an event
-export interface LokiEventEmitter {
-  addListener: LokiEventEmitter['on'];
+export interface LokiEventEmitter<E extends LokiEventMap = LokiEventMap> {
+  addListener: LokiEventEmitter<E>['on'];
 }
 
 // Shared defaults live on the prototype, as in the original implementation.

@@ -48,7 +48,14 @@ export type DynamicViewSortCriteria = (string | [string, boolean | SimpleSortOpt
  * @param options.minRebuildInterval - minimum rebuild interval (need clarification to docs here)
  * @see {@link Collection#addDynamicView} to construct instances of DynamicView
  */
-export class DynamicView<T extends object = any> extends LokiEventEmitter {
+export interface DynamicViewEvents<T extends object = any> {
+  rebuild: [view: DynamicView<T>];
+  filter: [];
+  sort: [];
+  [event: string]: unknown[];
+}
+
+export class DynamicView<T extends object = any> extends LokiEventEmitter<DynamicViewEvents<T>> {
   collection!: Collection<T>;
   name!: string;
   rebuildPending!: boolean;

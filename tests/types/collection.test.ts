@@ -30,4 +30,19 @@ describe('Collection<T> typings', () => {
     // @ts-expect-error unknown update callback property
     users.findAndUpdate({ age: 50 }, (u) => u.nope);
   });
+
+  it('types the arguments of built-in events', () => {
+    users.on('delete', (doc) => {
+      expectTypeOf(doc).toEqualTypeOf<LokiDocument<User>>();
+    });
+    users.on('update', (doc, old) => {
+      expectTypeOf(doc.age).toBeNumber();
+      expectTypeOf(old.name).toBeString();
+    });
+    db.on('loaded', (message) => {
+      expectTypeOf(message).toBeString();
+    });
+    // @ts-expect-error a delete listener receives a document, not a number
+    users.on('delete', (doc: number) => doc);
+  });
 });

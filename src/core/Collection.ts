@@ -86,7 +86,20 @@ export interface CollectionChange {
  * @param options.ttlInterval - time interval for clearing out 'aged' documents; not set by default.
  * @see {@link Loki#addCollection} for normal creation of collections
  */
-export class Collection<T extends object = any> extends LokiEventEmitter {
+export interface CollectionEvents<T extends object = any> {
+  insert: [doc: LokiDocument<T> | LokiDocument<T>[]];
+  'pre-insert': [doc: T | T[]];
+  update: [doc: LokiDocument<T>, old: LokiDocument<T>];
+  'pre-update': [doc: LokiDocument<T>];
+  delete: [doc: LokiDocument<T>];
+  error: [error: unknown];
+  warning: [message: unknown];
+  close: [];
+  flushbuffer: [];
+  [event: string]: unknown[];
+}
+
+export class Collection<T extends object = any> extends LokiEventEmitter<CollectionEvents<T>> {
   // the name of the collection
   name!: string;
   // the data held by the collection
@@ -1557,7 +1570,7 @@ export class Collection<T extends object = any> extends LokiEventEmitter {
       // emit 'delete' events only of listeners are attached.
       // since data not removed yet, in future we can emit single delete event with array...
       // for now that might be breaking change to put in potential 1.6 or LokiDB (lokijs2) version
-      if (!this.disableChangesApi || this.events.delete.length > 1) {
+      if (!this.disableChangesApi || (this.events.delete as unknown[]).length > 1) {
         for (idx = 0; idx < len; idx++) {
           this.emit('delete', this.data[positions[idx]]);
         }
