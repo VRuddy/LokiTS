@@ -1,4 +1,3 @@
-// Replaces loki-crypted-file-adapter.js from LokiJS, MIT. Original author: Hans Klunder.
 import { callAdapter } from '../persistence/adapter-bridge';
 import { withAdapterCallback } from '../persistence/callbacks';
 import type { AnyLokiAdapter } from '../types/adapter';

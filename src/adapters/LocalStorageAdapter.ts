@@ -1,4 +1,3 @@
-// Ported from LokiJS (lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
 import { withAdapterCallback } from '../persistence/callbacks';
 import { adapterError, translateDomError } from './errors';
 

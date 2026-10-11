@@ -1,4 +1,3 @@
-// Ported from LokiJS (lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
 import { BSonSort, binarySearch } from './BinaryIndex';
 
 const defaultSort = (a: any, b: any): number => (a < b ? -1 : a > b ? 1 : 0);

@@ -1,4 +1,3 @@
-// Ported from LokiJS (lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
 export class ExactIndex {
   index: { [key: string]: any[] | undefined };
   field: string;

@@ -1,4 +1,3 @@
-// Ported from LokiJS (incremental-indexeddb-adapter.js), MIT. Original author: radex (Radek Pietruszewski).
 import { invoke, withAdapterCallback } from '../persistence/callbacks';
 import { translateDomError } from './errors';
 import {
@@ -80,9 +79,9 @@ export class LokiIndexedDBAdapter {
   static async isSupported(): Promise<boolean> {
     try {
       const factory = indexedDBFactory();
-      const db = await openDatabase(factory, 'loki-ts-support-probe');
+      const db = await openDatabase(factory, 'lokits-support-probe');
       db.close();
-      factory.deleteDatabase('loki-ts-support-probe');
+      factory.deleteDatabase('lokits-support-probe');
       return true;
     } catch {
       return false;

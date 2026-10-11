@@ -1,7 +1,7 @@
 {
-  "name": "loki-ts",
+  "name": "@lokits/core",
   "version": "0.1.0-dev",
-  "description": "Community TypeScript modernization of the LokiJS in-memory document database",
+  "description": "In-memory document database in strict TypeScript, with Promise-based persistence to OPFS, IndexedDB and the file system. The maintained successor to LokiJS.",
   "homepage": "https://github.com/VRuddy/LokiTS",
   "repository": {
     "type": "git",
@@ -11,22 +11,19 @@
     "url": "https://github.com/VRuddy/LokiTS/issues"
   },
   "keywords": [
-    "typescript",
-    "document-oriented",
-    "mmdb",
-    "json",
-    "nosql",
-    "lokijs",
+    "database",
     "in-memory",
-    "indexeddb"
+    "document-database",
+    "nosql",
+    "typescript",
+    "opfs",
+    "indexeddb",
+    "local-first",
+    "offline-first",
+    "lokijs",
+    "lokidb"
   ],
-  "author": "Joe Minichino <joe.minichino@gmail.com>",
-  "contributors": [
-    {
-      "name": "Dave",
-      "email": "github@obeliskos.com"
-    }
-  ],
+  "author": "VRuddy (https://github.com/VRuddy)",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@12.10.1",
@@ -52,6 +49,9 @@
     "dist"
   ],
   "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "check": "biome check .",

@@ -1,4 +1,3 @@
-// Ported from LokiJS (lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
 import { LokiEventEmitter } from '../events/EventEmitter';
 import {
   binaryIndexInsert,

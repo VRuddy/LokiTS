@@ -1,4 +1,3 @@
-// Ported from LokiJS (lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
 import type { FileHandle } from 'node:fs/promises';
 import { withAdapterCallback } from '../persistence/callbacks';
 import { writeFileAtomic } from './fs/atomic-write';

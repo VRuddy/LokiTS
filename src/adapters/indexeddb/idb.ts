@@ -1,4 +1,3 @@
-// Ported from LokiJS (incremental-indexeddb-adapter.js), MIT. Original author: radex (Radek Pietruszewski).
 import { invoke } from '../../persistence/callbacks';
 import { adapterError, translateDomError } from '../errors';
 import { type ParsedChunk, STORE, type StoredChunk } from './chunks';

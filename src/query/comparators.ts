@@ -1,4 +1,3 @@
-// Ported from LokiJS (lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
 import { Utils } from '../utils/helpers';
 
 // wrapping in object to expose to default export for potential user override.

@@ -1,4 +1,3 @@
-// Ported from LokiJS (lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
 import type { CheckIndexOptions, Collection, CollectionBinaryIndex } from '../core/Collection';
 import { Comparators } from '../query/comparators';
 import { LokiOps } from '../query/operators';

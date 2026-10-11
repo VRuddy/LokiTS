@@ -1,4 +1,3 @@
-// Ported from LokiJS (lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
 import { Collection } from '../core/Collection';
 import type { LokiDocument } from '../types/document';
 import type { LokiQuery } from '../types/query';

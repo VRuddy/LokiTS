@@ -1,4 +1,3 @@
-// Ported from LokiJS (lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
 /** Maps each event name to the tuple of arguments its listeners receive. */
 export type LokiEventMap = Record<string, unknown[]>;
 

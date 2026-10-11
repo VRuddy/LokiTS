@@ -1,4 +1,3 @@
-// Ported from LokiJS (lokijs.js), MIT. Main author: obeliskos (Dave), with Joe Minichino and LokiJS contributors.
 import { Loki } from '../core/Loki';
 import { callAdapter } from '../persistence/adapter-bridge';
 import { withAdapterCallback } from '../persistence/callbacks';

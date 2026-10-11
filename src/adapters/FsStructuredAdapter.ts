@@ -1,4 +1,3 @@
-// Replaces loki-fs-structured-adapter.js from LokiJS, MIT. Main author: obeliskos (Dave), with LokiJS contributors.
 import { LokiFsAdapter } from './FsAdapter';
 import { LokiPartitioningAdapter } from './PartitioningAdapter';
 

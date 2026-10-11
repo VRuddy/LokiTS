@@ -1,4 +1,3 @@
-// Ported from LokiJS (lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
 import { LokiFsAdapter } from '../adapters/FsAdapter';
 import { LokiLocalStorageAdapter } from '../adapters/LocalStorageAdapter';
 import { LokiMemoryAdapter } from '../adapters/MemoryAdapter';

@@ -1,4 +1,3 @@
-// Ported from LokiJS (lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
 import { clone } from './clone';
 
 export const hasOwn = Object.prototype.hasOwnProperty;

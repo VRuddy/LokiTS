@@ -1,4 +1,3 @@
-// Ported from LokiJS (incremental-indexeddb-adapter.js), MIT. Original author: radex (Radek Pietruszewski).
 export const STORE = 'LokiIncrementalData';
 export const CHUNK_SIZE = 100;
 
