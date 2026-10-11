@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SaveQueue } from '../../src/persistence/save-queue';
 
 /** A run() whose executions are finished by the test. */
@@ -11,9 +11,14 @@ function controlledRun() {
   return { run, pending };
 }
 
-const tick = (ms = 5) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+/** Moves the fake clock forward, letting every timer and promise reaction due on the way run. */
+const advance = (ms: number) => vi.advanceTimersByTimeAsync(ms);
 
 describe('SaveQueue', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('runs one save at a time and folds the others into one', async () => {
     const { run, pending } = controlledRun();
     const queue = new SaveQueue(run, () => true);
@@ -67,32 +72,49 @@ describe('SaveQueue', () => {
   });
 
   it('drain waits for saves started by callbacks of the finished save', async () => {
+    vi.useFakeTimers();
     const { run, pending } = controlledRun();
     const queue = new SaveQueue(run, () => true);
 
     queue.save().then(() => queue.save());
-    const drained = queue.drain();
+    let drained: boolean | undefined;
+    queue.drain().then((value) => {
+      drained = value;
+    });
     pending[0].resolve();
-    await tick();
+    await advance(5);
     expect(pending).toHaveLength(2);
+    expect(drained).toBeUndefined();
 
     pending[1].resolve();
-    await expect(drained).resolves.toBe(true);
+    await advance(5);
+    expect(drained).toBe(true);
   });
 
   it('drain gives up after recursiveWaitLimitDuration', async () => {
+    vi.useFakeTimers();
     const { run, pending } = controlledRun();
     const queue = new SaveQueue(run, () => true);
     const keepSaving = () => queue.save().then(keepSaving);
 
     keepSaving();
-    const drained = queue.drain({ recursiveWaitLimit: true, recursiveWaitLimitDuration: 20 });
-    for (let i = 0; i < 10; i++) {
-      await tick(5);
+    let drained: boolean | undefined;
+    queue.drain({ recursiveWaitLimit: true, recursiveWaitLimitDuration: 20 }).then((value) => {
+      drained = value;
+    });
+    for (let i = 0; i < 3; i++) {
+      await advance(5);
       pending[pending.length - 1].resolve();
     }
+    await advance(5);
+    expect(drained).toBeUndefined();
 
-    await expect(drained).resolves.toBe(false);
+    for (let i = 0; i < 6; i++) {
+      await advance(5);
+      pending[pending.length - 1].resolve();
+    }
+    await advance(5);
+    expect(drained).toBe(false);
   });
 
   it('drain without recursiveWait returns after the current save', async () => {
@@ -208,6 +230,7 @@ describe('SaveQueue', () => {
   });
 
   it('a lock taken during a save does not start the queued save before the first ends', async () => {
+    vi.useFakeTimers();
     const { run, pending } = controlledRun();
     const queue = new SaveQueue(run, () => true);
     let release!: () => void;
@@ -228,12 +251,13 @@ describe('SaveQueue', () => {
 
     release();
     await locked;
-    await tick();
+    await advance(5);
     expect(pending).toHaveLength(1);
     expect(queue.busy).toBe(true);
     expect(drainedDone).toBe(false);
 
     pending[0].resolve();
+    await advance(5);
     await a;
     expect(pending).toHaveLength(2);
 
@@ -241,15 +265,17 @@ describe('SaveQueue', () => {
     b.then(() => {
       bDone = true;
     });
-    await tick();
+    await advance(5);
     expect(bDone).toBe(false);
 
     pending[1].resolve();
+    await advance(5);
     await b;
     await expect(drained).resolves.toBe(true);
   });
 
   it('overlapping locks keep saves back until the last one is released', async () => {
+    vi.useFakeTimers();
     const { run, pending } = controlledRun();
     const queue = new SaveQueue(run, () => true);
     let release1!: () => void;
@@ -271,7 +297,7 @@ describe('SaveQueue', () => {
 
     release1();
     await lock1;
-    await tick();
+    await advance(5);
     expect(pending).toHaveLength(0);
     expect(queue.busy).toBe(true);
 
@@ -279,6 +305,7 @@ describe('SaveQueue', () => {
     await lock2;
     expect(pending).toHaveLength(1);
     pending[0].resolve();
+    await advance(5);
     await save;
     expect(queue.busy).toBe(false);
   });
