@@ -40,6 +40,14 @@ function blockFirstOpen() {
   });
 }
 
+function failDelete(error: DOMException) {
+  vi.spyOn(indexedDB, 'deleteDatabase').mockImplementation(() => {
+    const request = { error } as unknown as IDBOpenDBRequest;
+    setTimeout(() => request.onerror?.(new Event('error')));
+    return request;
+  });
+}
+
 describe('IndexedDB compatibility with lokijs 1.5.12', () => {
   it('reads a database written by the lokijs incremental adapter', async () => {
     const legacy = new LegacyLoki('from-lokijs.db', { adapter: new LegacyIncremental() });
@@ -216,5 +224,23 @@ describe('IndexedDB compatibility with lokijs 1.5.12', () => {
         ours.loadDatabase('concurrent-lokits.db'),
       ]),
     ).resolves.toEqual([undefined, expect.objectContaining({ collections: [] })]);
+  });
+
+  it('shows the failed-delete bug on lokijs and not on LokiTS', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const error = new DOMException('disk failure', 'UnknownError');
+    failDelete(error);
+    const legacy = new LegacyIncremental();
+    // the error is lost: callers checking for a truthy error see a success
+    const outcome = await new Promise((resolve) =>
+      legacy.deleteDatabase('delete-lokijs.db', resolve),
+    );
+    expect(outcome).toEqual({ success: false });
+
+    const ours = new LokiIndexedDBAdapter();
+    await expect(ours.deleteDatabase('delete-lokits.db')).rejects.toBe(error);
+    const callback = vi.fn();
+    await ours.deleteDatabase('delete-lokits.db', callback);
+    expect(callback).toHaveBeenCalledWith(error);
   });
 });
