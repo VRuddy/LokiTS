@@ -288,6 +288,63 @@ describe('LokiIndexedDBAdapter', () => {
     expect(await rawGet(name, 'users.chunk.0')).toBeUndefined();
   });
 
+  it('does not mix documents when two collections swap names', async () => {
+    const name = uniqueName('swapped');
+    const db = new Loki(name, { adapter: new LokiIndexedDBAdapter() });
+    db.addCollection('a').insert(Array.from({ length: 250 }, () => ({ from: 'a' })));
+    const b = db.addCollection('b');
+    b.insert(Array.from({ length: 250 }, () => ({ from: 'b' })));
+    b.findAndRemove({ $loki: { $between: [100, 199] } });
+    await db.saveDatabase();
+
+    db.renameCollection('a', 'tmp');
+    db.renameCollection('b', 'a');
+    db.renameCollection('tmp', 'b');
+    await db.saveDatabase();
+
+    const reloaded = await Loki.open(name, { adapter: new LokiIndexedDBAdapter() });
+    const froms = (coll: string) => [
+      ...new Set(
+        reloaded
+          .getCollection(coll)!
+          .find()
+          .map((d) => d.from),
+      ),
+    ];
+    expect(froms('a')).toEqual(['b']);
+    expect(froms('b')).toEqual(['a']);
+    expect(reloaded.getCollection('a')!.count()).toBe(150);
+    expect(reloaded.getCollection('b')!.count()).toBe(250);
+  });
+
+  it('does not bring back a removed collection under a reused name', async () => {
+    const name = uniqueName('reused');
+    const db = new Loki(name, { adapter: new LokiIndexedDBAdapter() });
+    db.addCollection('a').insert(Array.from({ length: 250 }, () => ({ from: 'a' })));
+    const b = db.addCollection('b');
+    b.insert(Array.from({ length: 250 }, () => ({ from: 'b' })));
+    b.findAndRemove({ $loki: { $between: [100, 199] } });
+    await db.saveDatabase();
+
+    db.removeCollection('a');
+    db.renameCollection('b', 'a');
+    db.addCollection('b').insert(Array.from({ length: 250 }, () => ({ from: 'new' })));
+    await db.saveDatabase();
+
+    const reloaded = await Loki.open(name, { adapter: new LokiIndexedDBAdapter() });
+    const froms = (coll: string) => [
+      ...new Set(
+        reloaded
+          .getCollection(coll)!
+          .find()
+          .map((d) => d.from),
+      ),
+    ];
+    expect(froms('a')).toEqual(['b']);
+    expect(froms('b')).toEqual(['new']);
+    expect(reloaded.getCollection('a')!.count()).toBe(150);
+  });
+
   it('rewrites everything when another writer saved in between', async () => {
     const name = uniqueName('two-writers');
     const first = new Loki(name, { adapter: new LokiIndexedDBAdapter() });

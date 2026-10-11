@@ -437,6 +437,16 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
       c.name = newName;
       // a rename changes what gets persisted: without this, autosave skips it
       c.dirty = true;
+      // incremental adapters store chunks by name: rewrite them all, or the chunks of a collection
+      // that had this name before come back on load
+      const adapter = this.persistenceAdapter as { mode?: string; chunkSize?: unknown } | null;
+      if (adapter?.mode === 'incremental') {
+        const step =
+          typeof adapter.chunkSize === 'number' && adapter.chunkSize > 0 ? adapter.chunkSize : 1;
+        for (let id = 0; id <= c.maxId; id += step) {
+          c.dirtyIds.push(id);
+        }
+      }
     }
 
     return c;
