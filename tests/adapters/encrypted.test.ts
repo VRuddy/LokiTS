@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { inspect } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
 import { Loki, LokiEncryptedAdapter, LokiFsAdapter, LokiMemoryAdapter } from '../../src';
 
@@ -254,6 +255,31 @@ describe('LokiEncryptedAdapter', () => {
         ).toThrow('iterations must be an integer');
       }
     });
+  });
+
+  it('does not expose the secret through the adapter', () => {
+    const adapter = new LokiEncryptedAdapter(new LokiMemoryAdapter(), fast('hunter2-distinctive'));
+
+    expect(JSON.stringify(adapter)).not.toContain('hunter2-distinctive');
+    expect(inspect(adapter, { showHidden: true, depth: 5 })).not.toContain('hunter2-distinctive');
+    expect(Object.keys(adapter)).toEqual([]);
+  });
+
+  it('derives the key once when the first saves run concurrently', async () => {
+    const inner = new LokiMemoryAdapter();
+    const adapter = new LokiEncryptedAdapter(inner, fast('s'));
+    const derive = vi.spyOn(globalThis.crypto.subtle, 'deriveKey');
+    try {
+      await Promise.all([adapter.saveDatabase('a.db', 'A'), adapter.saveDatabase('b.db', 'B')]);
+
+      expect(derive).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(inner.hashStore['a.db'].value).salt).toBe(
+        JSON.parse(inner.hashStore['b.db'].value).salt,
+      );
+      await expect(adapter.loadDatabase('a.db')).resolves.toBe('A');
+    } finally {
+      derive.mockRestore();
+    }
   });
 
   it('requires a secret', () => {

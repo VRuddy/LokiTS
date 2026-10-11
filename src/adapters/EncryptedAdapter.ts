@@ -30,7 +30,7 @@ interface LegacyEnvelope {
   value: string;
 }
 
-interface CachedKey {
+interface DerivedKey {
   salt: string;
   iterations: number;
   key: CryptoKey;
@@ -62,16 +62,13 @@ function fromBase64(text: string): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
 }
 
-async function deriveKey(
-  secret: string,
+function deriveKey(
+  base: CryptoKey,
   salt: Uint8Array<ArrayBuffer>,
   iterations: number,
   hash: 'SHA-256' | 'SHA-1',
   algorithm: { name: 'AES-GCM' | 'AES-CBC'; length: number },
 ): Promise<CryptoKey> {
-  const base = await subtle().importKey('raw', encoder.encode(secret), 'PBKDF2', false, [
-    'deriveKey',
-  ]);
   return subtle().deriveKey({ name: 'PBKDF2', hash, salt, iterations }, base, algorithm, false, [
     'encrypt',
     'decrypt',
@@ -128,10 +125,12 @@ function parseEnvelope(stored: string): Envelope | LegacyEnvelope {
 
 /** Encrypts what another adapter stores (AES-256-GCM, key derived from a secret with PBKDF2-SHA256). */
 export class LokiEncryptedAdapter {
-  declare inner: AnyLokiAdapter;
-  declare secret: string;
-  declare iterations: number;
-  declare cachedKey: CachedKey | undefined;
+  // ES private fields: nothing here shows up in JSON.stringify or util.inspect
+  readonly #inner: AnyLokiAdapter;
+  readonly #iterations: number;
+  // the secret is imported once as a non-extractable key; the string itself is not kept
+  readonly #base: Promise<CryptoKey>;
+  #encryptionKey: Promise<DerivedKey> | undefined;
 
   constructor(inner: AnyLokiAdapter, options: LokiEncryptedAdapterOptions) {
     if (!inner) {
@@ -140,33 +139,36 @@ export class LokiEncryptedAdapter {
     if (!options?.secret) {
       throw new Error('LokiEncryptedAdapter requires a secret');
     }
-    this.inner = inner;
-    this.secret = options.secret;
     const iterations = options.iterations ?? DEFAULT_ITERATIONS;
     if (!isIterations(iterations)) {
       throw new Error(
         `LokiEncryptedAdapter iterations must be an integer between 1 and ${MAX_ITERATIONS}`,
       );
     }
-    this.iterations = iterations;
-    this.cachedKey = undefined;
+    this.#inner = inner;
+    this.#iterations = iterations;
+    this.#base = Promise.resolve().then(() =>
+      subtle().importKey('raw', encoder.encode(options.secret), 'PBKDF2', false, ['deriveKey']),
+    );
+    // a failure surfaces on first use; this keeps it from being reported as unhandled before then
+    this.#base.catch(() => undefined);
   }
 
   loadDatabase(dbname: string, callback?: (result: any) => void): Promise<string | null> {
-    return withAdapterCallback(this.load(dbname), callback, 'load') as Promise<string | null>;
+    return withAdapterCallback(this.#load(dbname), callback, 'load') as Promise<string | null>;
   }
 
   saveDatabase(dbname: string, data: string, callback?: (err?: any) => void): Promise<void> {
-    return withAdapterCallback(this.save(dbname, data), callback, 'write') as Promise<void>;
+    return withAdapterCallback(this.#save(dbname, data), callback, 'write') as Promise<void>;
   }
 
   deleteDatabase(dbname: string, callback?: (err?: any) => void): Promise<void> {
-    const deleting = callAdapter(this.inner, 'deleteDatabase', [dbname], 'write') as Promise<void>;
+    const deleting = callAdapter(this.#inner, 'deleteDatabase', [dbname], 'write') as Promise<void>;
     return withAdapterCallback(deleting, callback, 'write') as Promise<void>;
   }
 
-  private async load(dbname: string): Promise<string | null> {
-    const stored = await callAdapter(this.inner, 'loadDatabase', [dbname], 'load');
+  async #load(dbname: string): Promise<string | null> {
+    const stored = await callAdapter(this.#inner, 'loadDatabase', [dbname], 'load');
     if (stored === null || stored === undefined) {
       return null;
     }
@@ -175,17 +177,12 @@ export class LokiEncryptedAdapter {
     }
     const envelope = parseEnvelope(stored);
     try {
+      const base = await this.#base;
       if (envelope.cipher === 'aes-256-cbc') {
-        const key = await deriveKey(
-          this.secret,
-          fromBase64(envelope.salt),
-          envelope.iterations,
-          'SHA-1',
-          {
-            name: 'AES-CBC',
-            length: envelope.keyLength,
-          },
-        );
+        const key = await deriveKey(base, fromBase64(envelope.salt), envelope.iterations, 'SHA-1', {
+          name: 'AES-CBC',
+          length: envelope.keyLength,
+        });
         const plain = await subtle().decrypt(
           { name: 'AES-CBC', iv: fromBase64(envelope.iv) },
           key,
@@ -193,11 +190,11 @@ export class LokiEncryptedAdapter {
         );
         return decoder.decode(plain);
       }
-      const cached = this.cachedKey;
+      const cached = await this.#encryptionKey?.catch(() => undefined);
       const reusable = cached?.salt === envelope.salt && cached.iterations === envelope.iterations;
       const key = reusable
         ? cached.key
-        : await deriveKey(this.secret, fromBase64(envelope.salt), envelope.iterations, 'SHA-256', {
+        : await deriveKey(base, fromBase64(envelope.salt), envelope.iterations, 'SHA-256', {
             name: 'AES-GCM',
             length: 256,
           });
@@ -207,8 +204,12 @@ export class LokiEncryptedAdapter {
         fromBase64(envelope.value),
       );
       // the file's key parameters are adopted only once they authenticated, and never below the configured cost
-      if (!reusable && envelope.iterations >= this.iterations) {
-        this.cachedKey = { salt: envelope.salt, iterations: envelope.iterations, key };
+      if (!reusable && envelope.iterations >= this.#iterations) {
+        this.#encryptionKey = Promise.resolve({
+          salt: envelope.salt,
+          iterations: envelope.iterations,
+          key,
+        });
       }
       return decoder.decode(plain);
     } catch (err) {
@@ -216,8 +217,8 @@ export class LokiEncryptedAdapter {
     }
   }
 
-  private async save(dbname: string, data: string): Promise<void> {
-    const { key, salt, iterations } = await this.encryptionKey();
+  async #save(dbname: string, data: string): Promise<void> {
+    const { key, salt, iterations } = await this.#currentKey();
     // a fresh 96-bit IV per save: GCM must never reuse an IV with the same key
     const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
     const value = await subtle().encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(data));
@@ -231,19 +232,28 @@ export class LokiEncryptedAdapter {
       iv: toBase64(iv),
       value: toBase64(new Uint8Array(value)),
     };
-    await callAdapter(this.inner, 'saveDatabase', [dbname, JSON.stringify(envelope)], 'write');
+    await callAdapter(this.#inner, 'saveDatabase', [dbname, JSON.stringify(envelope)], 'write');
   }
 
-  private async encryptionKey(): Promise<CachedKey> {
-    // PBKDF2 is deliberately slow: derive once and reuse the key for every save
-    if (!this.cachedKey) {
+  // PBKDF2 is deliberately slow: derive once (concurrent first saves share the promise) and reuse the key
+  #currentKey(): Promise<DerivedKey> {
+    if (!this.#encryptionKey) {
       const salt = toBase64(globalThis.crypto.getRandomValues(new Uint8Array(16)));
-      const key = await deriveKey(this.secret, fromBase64(salt), this.iterations, 'SHA-256', {
-        name: 'AES-GCM',
-        length: 256,
+      const deriving = this.#base
+        .then((base) =>
+          deriveKey(base, fromBase64(salt), this.#iterations, 'SHA-256', {
+            name: 'AES-GCM',
+            length: 256,
+          }),
+        )
+        .then((key) => ({ salt, iterations: this.#iterations, key }));
+      this.#encryptionKey = deriving;
+      deriving.catch(() => {
+        if (this.#encryptionKey === deriving) {
+          this.#encryptionKey = undefined;
+        }
       });
-      this.cachedKey = { salt, iterations: this.iterations, key };
     }
-    return this.cachedKey;
+    return this.#encryptionKey;
   }
 }
