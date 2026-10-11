@@ -6,20 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": [
-      "**",
-      "!build",
-      "!docs",
-      "!demos",
-      "!examples",
-      "!benchmark",
-      "!benchmark.html",
-      "!tutorials",
-      "!original",
-      "!coverage",
-      "!dist",
-      "!pnpm-lock.yaml"
-    ]
+    "includes": ["**", "!docs", "!benchmark", "!tutorials", "!coverage", "!dist", "!pnpm-lock.yaml"]
   },
   "formatter": {
     "enabled": true,

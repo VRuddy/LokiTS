@@ -1,15 +1,8 @@
-### Note: we now have several quickstart examples in the 'examples' subfolder of this repository.
-
-> https://github.com/techfort/LokiJS/blob/master/examples/quickstart-core.js and
-> https://github.com/techfort/LokiJS/blob/master/examples/quickstart-chaining.js
-> https://github.com/techfort/LokiJS/blob/master/examples/quickstart-transforms.js
-> https://github.com/techfort/LokiJS/blob/master/examples/quickstart-dynview.js
-
-> For persistence examples we have numbered node quickstarts in the [examples folder](https://github.com/techfort/LokiJS/tree/master/examples) and web quickstart gists available within [Loki Sandbox](https://rawgit.com/techfort/LokiJS/master/examples/sandbox/LokiSandbox.htm).
+> For persistence examples, see [Persistence Adapters](Persistence%20Adapters.md).
 
 ### Designing Queries
 
-LokiJS has evolved several mechanisms for querying the database.  At the highest level of abstraction, let us divide the methods into these categories : 
+LokiTS has several mechanisms for querying the database.  At the highest level of abstraction, let us divide the methods into these categories : 
 * Core Methods - simple, yet powerful method for queries applied directly to a collection.
 * Chaining (via Resultsets) - allows for sorting, limiting, offsets, and multiple queries in sequence.
 * Chaining Transforms - similar to method chaining above, yet defined in object structure which can be serialized.
@@ -363,7 +356,7 @@ The core 'find' and 'where' functionality are two of the main building blocks th
 * map - maps into a new anonymous collection, provide this with a map function
 * mapReduce - allows you to specify both a map function and a reduce function on the current resultset data.
 * eqJoin - Left joining two sets of data. Join keys can be defined or calculated properties
-* transform - at the resultset level, this requires a raw transform array. When beginning a chain, a named or raw transform may be passed in to the chain method.  (See the ['Collection Transforms'](https://github.com/techfort/LokiJS/wiki/Collection-Transforms) wiki page for more details.)
+* transform - at the resultset level, this requires a raw transform array. When beginning a chain, a named or raw transform may be passed in to the chain method.  (See the [Collection Transforms](Collection%20Transforms.md) tutorial for more details.)
 
 An example making better use of chaining might be the following : 
 
@@ -398,7 +391,7 @@ Retaining the resultset (even when not branching) can be done to break up a chai
 
 Wherever possible, use 'Find' queries over 'Where' queries.  'Find' queries are able to utilize indexes if they are applied and are relevant to your query.
 
-The 'Core' (Collection) querying methods (Collection.where(), Collection.find(), Collection.findOne(), Collection.by()) are the best method for learning lokijs.  For many applications this may be sufficient for your query needs.  Features not (yet?) available would be sorting, limiting, offsets and other higher level transformations.  
+The 'Core' (Collection) querying methods (Collection.where(), Collection.find(), Collection.findOne(), Collection.by()) are the best method for learning LokiTS.  For many applications this may be sufficient for your query needs.  Features not (yet?) available would be sorting, limiting, offsets and other higher level transformations.  
 
 Chaining queries is done via a call to collection.chain() which instances the Resultset class.  In doing so, we establish a 'state' for our queries.  You can string together multiple 'find', 'where', sorts, limit, offset (etc) operations to progressively filter and transform your results.  You may also establish query branching to split off your query into multiple directions as efficiently as possible.  Chaining via resultsets is still intended for instant evaluation.  If you keep a resultset around in memory, it is not guaranteed to remain up-to-date if the underlying data changes.  Only the first chained operation may use database filters, so prioritize your most expensive find() filter (which has an index applied) to be the first chained operation.
 

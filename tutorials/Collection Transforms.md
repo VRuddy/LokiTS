@@ -174,7 +174,7 @@ You can now use transforms as an extraction method for a DynamicView.  Certain a
 
 An example of this might look like the following : 
 ```javascript
-var db = new loki('test');
+var db = new Loki('test');
 var coll = db.addCollection('mydocs');
 var dv = coll.addDynamicView('myview');
 var tx = [
