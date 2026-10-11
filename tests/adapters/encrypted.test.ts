@@ -1,3 +1,4 @@
+import { createCipheriv, pbkdf2Sync, randomBytes } from 'node:crypto';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -102,16 +103,19 @@ describe('LokiEncryptedAdapter', () => {
     const inner = new LokiMemoryAdapter();
     const adapter = new LokiEncryptedAdapter(inner, fast('s'));
     const derive = vi.spyOn(globalThis.crypto.subtle, 'deriveKey');
-    const ivs = new Set<string>();
+    try {
+      const ivs = new Set<string>();
 
-    for (let i = 0; i < 5; i++) {
-      await adapter.saveDatabase('e.db', `v${i}`);
-      ivs.add(JSON.parse(inner.hashStore['e.db'].value).iv);
+      for (let i = 0; i < 5; i++) {
+        await adapter.saveDatabase('e.db', `v${i}`);
+        ivs.add(JSON.parse(inner.hashStore['e.db'].value).iv);
+      }
+
+      expect(derive).toHaveBeenCalledTimes(1);
+      expect(ivs.size).toBe(5);
+    } finally {
+      derive.mockRestore();
     }
-
-    expect(derive).toHaveBeenCalledTimes(1);
-    expect(ivs.size).toBe(5);
-    derive.mockRestore();
   });
 
   it('reads a file written by the original crypted adapter and rewrites it with GCM', async () => {
@@ -280,6 +284,37 @@ describe('LokiEncryptedAdapter', () => {
     } finally {
       derive.mockRestore();
     }
+  });
+
+  it('rejects legacy data that decrypts to invalid UTF-8', async () => {
+    const salt = randomBytes(32);
+    const iv = randomBytes(16);
+    const cipher = createCipheriv('aes-256-cbc', pbkdf2Sync('s', salt, 1000, 32, 'sha1'), iv);
+    const value = Buffer.concat([cipher.update(Buffer.from([0xff, 0xfe, 0xfd])), cipher.final()]);
+    const inner = new LokiMemoryAdapter();
+    await inner.saveDatabase(
+      'legacy.db',
+      JSON.stringify({
+        cipher: 'aes-256-cbc',
+        keyLength: 256,
+        iterations: 1000,
+        salt: salt.toString('base64'),
+        iv: iv.toString('base64'),
+        value: value.toString('base64'),
+      }),
+    );
+
+    await expect(
+      new LokiEncryptedAdapter(inner, fast('s')).loadDatabase('legacy.db'),
+    ).rejects.toThrow('wrong secret or corrupted data');
+  });
+
+  it.each(['reference', 'incremental'] as const)('refuses to wrap a %s mode adapter', (mode) => {
+    const inner = { mode, loadDatabase: async () => null } as unknown as LokiMemoryAdapter;
+
+    expect(() => new LokiEncryptedAdapter(inner, fast('s'))).toThrow(
+      'cannot wrap a reference or incremental mode',
+    );
   });
 
   it('requires a secret', () => {

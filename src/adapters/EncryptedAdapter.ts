@@ -39,7 +39,8 @@ interface DerivedKey {
 const DEFAULT_ITERATIONS = 600_000;
 const MAX_ITERATIONS = 10_000_000;
 const encoder = new TextEncoder();
-const decoder = new TextDecoder();
+// fatal: unauthenticated CBC garbage from a wrong secret is reported as an error rather than returned
+const decoder = new TextDecoder('utf-8', { fatal: true });
 const subtle = () => globalThis.crypto.subtle;
 
 function toBase64(bytes: Uint8Array): string {
@@ -135,6 +136,9 @@ export class LokiEncryptedAdapter {
   constructor(inner: AnyLokiAdapter, options: LokiEncryptedAdapterOptions) {
     if (!inner) {
       throw new Error('LokiEncryptedAdapter requires an adapter to wrap');
+    }
+    if (inner.mode === 'reference' || inner.mode === 'incremental') {
+      throw new Error('LokiEncryptedAdapter cannot wrap a reference or incremental mode adapter');
     }
     if (!options?.secret) {
       throw new Error('LokiEncryptedAdapter requires a secret');
