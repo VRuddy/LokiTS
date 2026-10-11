@@ -110,71 +110,81 @@ function databaseInitialize() {
 
 ```
 
-If you expect your database to grow up to 60megs you might want to use our LokiIndexedAdapter which can save to IndexedDb, if your browser supports it.  
+If your database outgrows localStorage, use `LokiIndexedDBAdapter` (IndexedDB) or `LokiOpfsAdapter` (origin private file system). Both return promises and still accept the optional callback as last argument. A full localStorage rejects with the code `EQUOTA`.
 
-### Example using more scalable LokiIndexedAdapter : 
-```
-<script src="../../src/lokijs.js"></script>
-<script src="../../src/loki-indexed-adapter.js"></script>
-```
-```javascript
-var idbAdapter = new LokiIndexedAdapter();
-var db = new loki("test.db", { 
-  adapter: idbAdapter,
-  autoload: true,
-  autoloadCallback : databaseInitialize,
-  autosave: true, 
-  autosaveInterval: 4000
-});
-```
+### Example using LokiIndexedDBAdapter
 
-If you expect your database to grow over 60megs things start to get browser dependent.  To provide singular guidance and since Chrome is the most popular web browser you will want to employ our LokiPartitioningAdapter in addition to our LokiIndexedAdapter.  To sum up as briefly as possible, this will divide collections into their own files and if a collection exceeds 25megs (customizable) it will subdivide into separate pages(files).  This allows our indexed db adapter to accomplish a single database save/load using many key/value pairs.  This adapter will allow scaling up to around 300mb or so in current testing.  
-
-### An example using the LokiPartitioningAdapter along with LokiIndexedAdapter might appear as :
-
-```
-<script src="../../src/lokijs.js"></script>
-<script src="../../src/loki-indexed-adapter.js"></script>
-```
-```javascript
-var idbAdapter = new LokiIndexedAdapter();
-
-// use paging only if you expect a single collection to be over 50 megs or so
-var pa = new loki.LokiPartitioningAdapter(idbAdapter, { paging: true });
-
-var db = new loki('test.db', {
-  adapter: pa,
-  autoload: true,
-  autoloadCallback : databaseInitialize,
-  autosave: true,
-  autosaveInterval: 4000
-});
-```
-
-### Example using IncrementalIndexedDBAdapter
-
-A newer, more advanced alternative to `LokiIndexedAdapter` with `LokiPartitioningAdapter` is to use `IncrementalIndexedDBAdapter`.
-Unlike `LokiIndexedAdapter`, the database is saved not as one big JSON blob (or even pages of individual collections), but split into
-small chunks with individual collection documents. When saving, only the chunks with changed
-documents (and database metadata) is saved to IndexedDB. This speeds up small incremental
+The database is not saved as one big JSON string but split into small chunks of 100 documents. When saving, only the chunks with changed
+documents (and the database metadata) are saved to IndexedDB. This speeds up small incremental
 saves by an order of magnitude on large (tens of thousands of records) databases. It also
-avoids Safari 13 bug that would cause the database to balloon in size to gigabytes.
+avoids a Safari 13 bug that would cause the database to balloon in size to gigabytes.
 
-`IncrementalIndexedDBAdapter` is not backwards compatible with `LokiIndexedAdapter`.
-
-```html
-<script src="../../src/lokijs.js"></script>
-<script src="../../src/incremental-indexeddb-adapter.js"></script>
-```
 ```javascript
-var db = new loki('TestDatabase', {
-  adapter: new IncrementalIndexedDBAdapter(),
-  autoload: true,
-  autoloadCallback : databaseInitialize,
+import { Loki, LokiIndexedDBAdapter } from 'loki-ts';
+
+const db = await Loki.open('TestDatabase', {
+  adapter: new LokiIndexedDBAdapter(),
   autosave: true,
   autosaveInterval: 4000
 });
+if (!db.getCollection('users')) {
+  db.addCollection('users');
+}
 ```
+
+`LokiIndexedDBAdapter` uses the storage format of the incremental IndexedDB adapter of lokijs (`IncrementalIndexedDBAdapter`): databases saved by one open in the other. It is not compatible with `LokiIndexedAdapter`, the adapter that saved one JSON string per key: see 'Migrating from LokiIndexedAdapter' below.
+
+Options (all optional) :
+* `lazyCollections` : names of collections whose documents are only parsed when first used.
+* `serializeChunk(collectionName, chunk)` and `deserializeChunk(collectionName, chunk)` : transform each chunk of documents before it is stored and after it is read. Pass both or neither.
+* `megachunkCount` : number of parallel reads when loading more than 100 chunks (default 24, even, at least 4).
+* `onFetchStart`, `onDidOverwrite`, `onversionchange` : see below.
+
+The operations of one adapter instance run one after the other, and one instance can serve several databases. Another tab that saved in between is detected through a version stored with the database: the next save then rewrites every chunk, and `onDidOverwrite` is called. If another tab deletes or upgrades the database, the connection is closed and `onversionchange` is called; the adapter reopens it on the next operation. Errors carry a `code` : `ENOTSUP` (no IndexedDB), `EBUSY` (opening is blocked by another connection), `EQUOTA` (storage is full), the original error being the `cause`. `await LokiIndexedDBAdapter.isSupported()` tells beforehand whether IndexedDB can be opened (some private browsing modes refuse).
+
+### Example using LokiOpfsAdapter
+
+The origin private file system stores each key in a file of its own, replaced atomically when the write completes: a write that fails midway keeps the previous content. Used alone, a database is one file ; under `LokiPartitioningAdapter` each collection gets its own file, streamed line by line, and a crash during a save leaves the previous state readable.
+
+```javascript
+import { Loki, LokiOpfsAdapter, LokiPartitioningAdapter } from 'loki-ts';
+
+if (await LokiOpfsAdapter.isSupported()) {
+  const adapter = new LokiPartitioningAdapter(new LokiOpfsAdapter({ directory: 'my-app' }));
+  const db = await Loki.open('test.db', { adapter });
+}
+```
+
+`directory` is a folder of the origin private file system (created when missing, `/` separates levels); without it files go in the root. Keys cannot contain `/`. Errors carry a `code` : `ENOTSUP`, `EQUOTA`, `EBUSY` (a Worker holds a synchronous access handle on the file), `EINVAL` (invalid key). The browser may clear this storage when space runs short: `navigator.storage.persist()` asks for it to be kept.
+
+The adapter writes through `createWritable()`, also in a Worker. A write path using `FileSystemSyncAccessHandle` was measured in Chromium, Firefox and WebKit on 100 000 documents and was not faster, so it is not implemented.
+
+### Migrating from LokiIndexedAdapter
+
+`LokiIndexedAdapter` and `Loki.getIndexedAdapter()` are gone. To move an existing database, keep lokijs installed (`pnpm add lokijs`) and run this function at startup instead of opening the database directly. It opens the database with `LokiIndexedDBAdapter` ; when that finds nothing, it reads the old copy, saves it with the new adapter and deletes the old one. Keep calling it as long as some devices have not migrated: once a database is migrated it only costs one extra read.
+
+```ts
+import { Loki, LokiIndexedDBAdapter } from 'loki-ts';
+import LokiIndexedAdapter from 'lokijs/src/loki-indexed-adapter.js';
+
+async function migrateFromLokiIndexedAdapter(name: string): Promise<Loki> {
+  const db = await Loki.open(name, { adapter: new LokiIndexedDBAdapter() });
+  if (db.listCollections().length > 0) {
+    return db;
+  }
+  const legacy = new LokiIndexedAdapter('loki');
+  const old = await Loki.open(name, { adapter: legacy });
+  if (old.listCollections().length === 0) {
+    return db;
+  }
+  db.loadJSON(old.serialize());
+  await db.saveDatabase();
+  await old.deleteDatabase();
+  return db;
+}
+```
+
+`'loki'` is the default 'App' context of `LokiIndexedAdapter`: pass the one your application used. A database that was saved through `LokiPartitioningAdapter` is read with `new LokiPartitioningAdapter(legacy)` in place of `legacy` ; `old.deleteDatabase()` then removes the partitions too.
 
 # Description of LokiNativescriptAdapter
 This adapter can be used when developing a nativescript application for iOS or Android, it persists the loki db to the filesystem using the native platform api.
@@ -201,7 +211,7 @@ LokiJS now supports automatic saving at user defined intervals, configured via l
 
 ### Autosave example
 ```javascript
-    var idbAdapter = new LokiIndexedAdapter('loki');
+    var idbAdapter = new LokiIndexedDBAdapter();
     var db = new loki('test', 
       {
         autosave: true, 
@@ -212,7 +222,7 @@ LokiJS now supports automatic saving at user defined intervals, configured via l
 
 ### Autosave with autoload example
 ```javascript
-    var idbAdapter = new lokiIndexedAdapter('loki');
+    var idbAdapter = new LokiIndexedDBAdapter();
     var db = new loki('test.db', 
       {
         autoload: true,
@@ -352,27 +362,27 @@ YourAdapter.prototype.loadDatabase = function(dbname, callback) {
 This is an adapter for adapters.  It wraps around and converts any 'basic' persistence adapter into one that scales nicely to your memory contraints.  It can split your database up, saving each collection independently and only if changes have occurred since the last save.  Since each collection is saved separately there is lower memory overhead and since only dirty collections are saved there is improved i/o save speeds. 
 > Chrome (using indexedDb) places a restriction on how large a single saved 'chunk' can be, this Partitioning adapter with just partitioning raises that limit from being 'per db' to 'per collection'... when paging is enabled that limit is raised to being 'per document'.  Chrome indexedDb limit is somewhere around 30-60megs sized chunks.  
 
-An example using partition adapter with our LokiIndexedAdapter might appear such as :
+An example using partition adapter with our LokiOpfsAdapter might appear such as (LokiIndexedDBAdapter already stores small chunks and does not need partitioning) :
 
 ```javascript
-var idbAdapter = new LokiIndexedAdapter('appAdapter');
-var pa = new loki.LokiPartitioningAdapter(idbAdapter);
+var opfsAdapter = new LokiOpfsAdapter({ directory: 'appAdapter' });
+var pa = new LokiPartitioningAdapter(opfsAdapter);
 
-var db = new loki('sandbox.db', { adapter: pa });
+var db = new Loki('sandbox.db', { adapter: pa });
 ```
 
 If you expect a single collection to grow rather large you may even want to utilize an additional 'paging' mode that this adapter provides.  This is useful if you want to limit the size of data sent to the inner persistence adapter. This paging mode was added to accomodate a Chrome limitation on maximum record sizes.  An example using paging mode might appear as follows :
 ```javascript
-var idbAdapter = new LokiIndexedAdapter('appAdapter');
-var pa = new loki.LokiPartitioningAdapter(idbAdapter, { paging: true });
+var opfsAdapter = new LokiOpfsAdapter({ directory: 'appAdapter' });
+var pa = new LokiPartitioningAdapter(opfsAdapter, { paging: true });
 
-var db = new loki('sandbox.db', { adapter: pa });
+var db = new Loki('sandbox.db', { adapter: pa });
 ```
 
 You can also pass in a pageSize option if you wish to use a page size other than the default 25meg page size.
 ```javascript
 // set up adapter to page using 35 meg page size
-var pa = new loki.LokiPartitioningAdapter(idbAdapter, { paging: true, pageSize:35*1024*1024 });
+var pa = new LokiPartitioningAdapter(opfsAdapter, { paging: true, pageSize:35*1024*1024 });
 ```
 
 # LokiMemoryAdapter
@@ -423,84 +433,22 @@ Destructuring (making many smaller json serializations vs one large serializatio
 
 If your database is small enough you can use the LokiPartitioningAdapter (with or without paging) along with LokiMemoryAdapter to decompose database into appropriately sized 'chunks' for transmission.
 
-# Detailed LokiIndexedAdapter Description
+# Detailed LokiIndexedDBAdapter Description
 
-Our LokiIndexedAdapter is implemented as a 'basic' mode loki persistence adapter.  Since this will probably be the default web persistence adapter, this section will overview some of its advanced features.  
+`LokiIndexedDBAdapter` is an 'incremental' mode loki persistence adapter: instead of a serialized string it receives the database through a function (`getLokiCopy`) and decides what to write.
 
-It implements persistence by defining an app/key/value database in indexeddb for storing serialized databases (or partitions).  The 'app' portion is designated when instantiating the adapter and loki only supplies it key/value pair for storage.
+It stores a database in an IndexedDB database named like the loki database (version 1), in an object store `LokiIncrementalData` of `{ key, value }` records, `value` being JSON text. The keys are `loki` (database properties and the version used to detect another writer), `<collection>.metadata` and `<collection>.chunk.<n>` (the documents whose `$loki` is between n*100 and n*100+99). Each loki database is therefore an IndexedDB database of its own, and the 'App' context, `getDatabaseList`, `getCatalogSummary` and `deleteDatabasePartitions` of `LokiIndexedAdapter` do not exist any more: `indexedDB.databases()` lists the databases of the origin, and `adapter.deleteDatabase(name)` deletes one.
 
-### Simple Example of using LokiIndexedAdapter (for browser environments) :
+A save opens one transaction, reads the stored version and, when it is the one this adapter last saved or loaded, writes only the dirty chunks and the metadata of the changed collections; otherwise (first save of an instance, other tab, collection removed or renamed) it writes everything and deletes the chunks that no collection owns any more. A save is all or nothing.
+
 ```javascript
-<script src="scripts/lokijs/lokijs.js"></script>
-<script src="scripts/lokijs/loki-indexed-adapter.js"></script>
-```
-...
-```javascript
-var idbAdapter = new LokiIndexedAdapter('finance');
-var db = new loki('test', { adapter: idbAdapter });
-```
+import { Loki, LokiIndexedDBAdapter } from 'loki-ts';
 
-Note the 'finance' in this case represents an 'App' context and the 'test' designates the key (or database name)... the 'value' is the serialized strings representing your database which loki will provide. Advantages include larger storage limits over localstorage, and a catalog based approach where you can store many databases, grouped by an 'App' context.  Since indexedDB storage is provided 'per-domain', and on any given domain you might be running several web 'apps' each with its own database(s), this structure allows for organization and expandibility.
-> _**Note : the 'App' context is an conceptual separation, not a security partition. Security is provided by your web browser, partitioned per-domain within client storage in the browser/system.**_
+const adapter = new LokiIndexedDBAdapter();
+const db = await Loki.open('test', { adapter });
+const coll = db.getCollection('testColl') ?? db.addCollection('testColl');
+coll.insert({ test: 'val' });
+await db.saveDatabase();
 
-# Loki Indexed adapter interface
-
-In addition to core loadDatabase and saveDatabase methods, the loki Indexed adapter provides the ability to getDatabaseList (for the current app context), deleteDatabase, and getCatalogSummary to retrieve unfiltered list of app/keys along with the size in database.  (Note sizes reported may not be Unicode sizes so effective 'size' it may consume might be double that amount as indexeddb saves in Unicode).  The loki indexed adapter also is console-friendly... even though indexeddb is highly asynchronous, relying on callbacks, you can omit callbacks for many of its methods and will log results to console instead.  This makes experimenting, diagnosing, and maintenance of loki catalog easier to learn and inspect.
-
-### Full Examples of using loki indexed adapter
-```javascript
-  // Save : will save App/Key/Val as 'finance'/'test'/{serializedDb}
-  // if appContect ('finance' in this example) is omitted, 'loki' will be used
-  var idbAdapter = new lokiIndexedAdapter('finance');
-  var db = new loki('test', { adapter: idbAdapter });
-  var coll = db.addCollection('testColl');
-  coll.insert({test: 'val'});
-  db.saveDatabase();  // could pass callback if needed for async complete
-
-  // Load database
-  var idbAdapter = new LokiIndexedAdapter('finance');
-  var db = new loki('test', { adapter: idbAdapter });
-  db.loadDatabase({}, function(result) {
-    console.log('done');
-  });
-
-  // Get database list
-  var idbAdapter = new LokiIndexedAdapter('finance');
-  idbAdapter.getDatabaseList(function(result) {
-    // result is array of string names for that appcontext ('finance')
-    result.forEach(function(str) {
-      console.log(str);
-    });
-  });
-  
-  // Delete database
-  var idbAdapter = new LokiIndexedAdapter('finance');
-  idbAdapter.deleteDatabase('test'); // delete 'finance'/'test' value from catalog
-
-  // Delete database partitions and/or pages
-  // This deletes all partitions or pages derived from this base filename
-  var idbAdapter = new LokiIndexedAdapter('finance');
-  idbAdapter.deleteDatabasePartitions('test'); 
-
-  // Summary
-  var idbAdapter = new LokiIndexedAdapter('finance');
-  idbAdapter.getCatalogSummary(function(entries) {
-    entries.forEach(function(obj) {
-      console.log("app : " + obj.app);
-      console.log("key : " + obj.key);
-      console.log("size : " + obj.size);
-    });
-  });
-
-```
-
-### Examples of using loki Indexed adapter from console
-```javascript
-  // CONSOLE USAGE : if using from console for management/diagnostic, here are a few examples :
-  var adapter = new LokiIndexedAdapter('loki');  // or whatever appContext you want to use
-  adapter.getDatabaseList(); // with no callback passed, this method will log results to console
-  adapter.saveDatabase('UserDatabase', JSON.stringify(myDb));
-  adapter.loadDatabase('UserDatabase'); // will log the serialized db to console
-  adapter.deleteDatabase('UserDatabase');
-  adapter.getCatalogSummary(); // gets list of all keys along with their sizes
+await adapter.deleteDatabase('test'); // deletes the IndexedDB database itself
 ```

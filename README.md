@@ -74,6 +74,24 @@ copie avant d’ouvrir une base existante, ou passez `generations: false` pour g
 partitionné d’origine, avec sa fragilité : un arrêt pendant une sauvegarde peut alors désynchroniser
 la base.
 
+Dans le navigateur, localStorage reste le défaut (environ 5 Mo). Pour une vraie base, choisir
+`LokiIndexedDBAdapter` (ne réécrit que les paquets de documents modifiés, relit les bases de
+l’adaptateur incrémental de lokijs) ou `LokiOpfsAdapter` (Origin Private File System, un fichier
+par base ; sous `LokiPartitioningAdapter`, un fichier par collection) :
+
+```ts
+import { Loki, LokiIndexedDBAdapter, LokiOpfsAdapter, LokiPartitioningAdapter } from 'loki-ts';
+
+const adapter = (await LokiOpfsAdapter.isSupported())
+  ? new LokiPartitioningAdapter(new LokiOpfsAdapter({ directory: 'my-app' }))
+  : new LokiIndexedDBAdapter();
+const db = await Loki.open('app.db', { adapter });
+```
+
+Le navigateur peut effacer ce stockage quand l’espace manque : `navigator.storage.persist()` le
+demande persistant. Les bases de l’ancien `LokiIndexedAdapter` de lokijs se migrent avec la recette
+du [tutoriel](tutorials/Persistence%20Adapters.md).
+
 ## Modernisation prévue
 
 - Outillage moderne avec pnpm, Biome, Vitest et tsup
