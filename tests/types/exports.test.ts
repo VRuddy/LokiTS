@@ -6,6 +6,7 @@ describe('public exports', () => {
   it('exposes the static members of the original module with types', () => {
     expectTypeOf(loki.Collection).toEqualTypeOf<typeof Collection>();
     expectTypeOf(loki.persistenceAdapters.fs).toEqualTypeOf<typeof api.LokiFsAdapter>();
+    expectTypeOf(loki.LokiFsStructuredAdapter).toEqualTypeOf<typeof api.LokiFsStructuredAdapter>();
     expectTypeOf(loki.aeq).toBeFunction();
     expect(loki.LokiOps.$eq(1, 1)).toBe(true);
     expect(new loki('x')).toBeInstanceOf(Loki);

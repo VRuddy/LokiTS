@@ -58,11 +58,10 @@ If you expect your database to grow over 100mb or you experience slow save speed
 
 ### An example using fastest and most scalable LokiFsStructuredAdapter (for nodejs) might look like : 
 ```javascript
-const loki = require("lokijs");
-const lfsa = require('../src/loki-fs-structured-adapter.js');
+const { Loki, LokiFsStructuredAdapter } = require('loki-ts');
 
-var adapter = new lfsa();
-var db = new loki('sandbox.db', { 
+var adapter = new LokiFsStructuredAdapter();
+var db = new Loki('sandbox.db', { 
   adapter : adapter,
   autoload: true,
   autoloadCallback : databaseInitialize,

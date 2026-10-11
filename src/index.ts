@@ -28,6 +28,7 @@ const statics = {
   LokiPartitioningAdapter,
   LokiLocalStorageAdapter,
   LokiFsAdapter,
+  LokiFsStructuredAdapter,
   persistenceAdapters: {
     fs: LokiFsAdapter,
     localStorage: LokiLocalStorageAdapter,

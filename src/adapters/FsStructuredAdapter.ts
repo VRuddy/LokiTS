@@ -8,6 +8,7 @@ import { LokiPartitioningAdapter } from './PartitioningAdapter';
  */
 export class LokiFsStructuredAdapter extends LokiPartitioningAdapter {
   constructor(options: { generations?: boolean } = {}) {
-    super(new LokiFsAdapter(), { legacyFormat: 'lines', ...options });
+    // the layout is fixed: no other option (paging, legacyFormat...) may change it
+    super(new LokiFsAdapter(), { legacyFormat: 'lines', generations: options.generations ?? true });
   }
 }

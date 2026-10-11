@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -44,13 +44,74 @@ describe('LokiFsStructuredAdapter', () => {
     const file = newFile();
     const db = new Loki(file, { adapter: new LokiFsStructuredAdapter({ generations: false }) });
     db.addCollection('users').insert({ name: 'odin' });
+    db.addCollection('gods').insert({ name: 'thor' });
+    await db.saveDatabase();
+
+    expect(readdirSync(join(file, '..')).filter((name) => /\.g\d+-/.test(name))).toEqual([]);
+    const legacy = new LegacyLoki(file, { adapter: new LegacyFsStructured() });
+    await new Promise<void>((resolve, reject) =>
+      legacy.loadDatabase({}, (err: unknown) => (err ? reject(err) : resolve())),
+    );
+    expect(legacy.getCollection('users').findOne({ name: 'odin' })).toBeTruthy();
+    expect(legacy.getCollection('gods').findOne({ name: 'thor' })).toBeTruthy();
+  });
+
+  it('keeps its layout whatever the options say', async () => {
+    const file = newFile();
+    const options = { legacyFormat: 'partitioning', paging: true, pageSize: 1 } as object;
+    const db = new Loki(file, { adapter: new LokiFsStructuredAdapter(options) });
+    db.addCollection('users').insert([{ name: 'odin' }, { name: 'thor' }]);
+    await db.saveDatabase();
+
+    const names = readdirSync(join(file, '..'));
+    const partitions = names.filter((name) => name.startsWith('app.db.0'));
+    expect(partitions).toHaveLength(1);
+    const lines = readFileSync(join(file, '..', partitions[0] as string), 'utf8')
+      .trim()
+      .split('\n');
+    expect(lines.map((line) => JSON.parse(line).name)).toEqual(['odin', 'thor']);
+  });
+
+  it('writes the original layout with generations: false whatever the other options say', async () => {
+    const file = newFile();
+    const options = {
+      generations: false,
+      legacyFormat: 'partitioning',
+      paging: true,
+      pageSize: 1,
+    } as object;
+    const db = new Loki(file, { adapter: new LokiFsStructuredAdapter(options) });
+    db.addCollection('users').insert([{ name: 'odin' }, { name: 'thor' }]);
     await db.saveDatabase();
 
     const legacy = new LegacyLoki(file, { adapter: new LegacyFsStructured() });
     await new Promise<void>((resolve, reject) =>
       legacy.loadDatabase({}, (err: unknown) => (err ? reject(err) : resolve())),
     );
-    expect(legacy.getCollection('users').findOne({ name: 'odin' })).toBeTruthy();
+    expect(legacy.getCollection('users').count()).toBe(2);
+  });
+
+  it('opens an original database whatever the other options say', async () => {
+    const file = newFile();
+    const legacy = new LegacyLoki(file, { adapter: new LegacyFsStructured() });
+    legacy.addCollection('users').insert({ name: 'odin' });
+    await legacySave(legacy);
+
+    const options = { legacyFormat: 'partitioning', paging: true } as object;
+    const db = await Loki.open(file, { adapter: new LokiFsStructuredAdapter(options) });
+
+    expect(db.getCollection('users')?.count()).toBe(1);
+  });
+
+  it('uses generations when the option is undefined', async () => {
+    const file = newFile();
+    const db = new Loki(file, {
+      adapter: new LokiFsStructuredAdapter({ generations: undefined }),
+    });
+    db.addCollection('users').insert({ name: 'odin' });
+    await db.saveDatabase();
+
+    expect(readdirSync(join(file, '..')).some((name) => /\.g1-/.test(name))).toBe(true);
   });
 
   it('loads a database without collections', async () => {
