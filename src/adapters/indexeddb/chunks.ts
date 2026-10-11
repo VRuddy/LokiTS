@@ -66,13 +66,9 @@ export function randomVersionId(): string {
   return Math.random().toString(36).substring(2);
 }
 
-export function getChunk(
-  collection: CollectionLike,
-  chunkId: number,
-  chunkSize = CHUNK_SIZE,
-): object[] {
-  const minId = chunkId * chunkSize;
-  const maxId = minId + chunkSize - 1;
+export function getChunk(collection: CollectionLike, chunkId: number): object[] {
+  const minId = chunkId * CHUNK_SIZE;
+  const maxId = minId + CHUNK_SIZE - 1;
 
   collection.ensureId();
   const idIndex = collection.idIndex as number[];
@@ -94,7 +90,7 @@ export function getChunk(
 
   // $loki ids have holes when documents are removed, so look back from the fullest possible chunk
   let last = -1;
-  for (let i = first + chunkSize - 1; i >= first; i--) {
+  for (let i = first + CHUNK_SIZE - 1; i >= first; i--) {
     if (idIndex[i] <= maxId) {
       last = i;
       break;
@@ -111,7 +107,7 @@ export function getChunk(
   }
 
   const chunk = collection.data.slice(first, last + 1);
-  if (chunk.length > chunkSize) {
+  if (chunk.length > CHUNK_SIZE) {
     throw new Error('broken invariant - chunk size');
   }
   return chunk;

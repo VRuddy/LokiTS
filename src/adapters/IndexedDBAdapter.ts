@@ -41,7 +41,8 @@ export interface LokiIndexedDBAdapterOptions {
 export class LokiIndexedDBAdapter {
   mode!: 'incremental';
   options!: LokiIndexedDBAdapterOptions;
-  chunkSize!: number;
+  /** Documents per stored chunk: fixed by the storage format. */
+  readonly chunkSize!: number;
   megachunkCount!: number;
   lazyCollections!: string[];
   #idb: IDBDatabase | null;

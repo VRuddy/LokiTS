@@ -6,6 +6,7 @@ import {
   type LokiAdapter,
   LokiFsAdapter,
   type LokiIncrementalAdapter,
+  LokiIndexedDBAdapter,
   type LokiKeyListingAdapter,
   type LokiLineStreamAdapter,
 } from '../../src';
@@ -51,5 +52,12 @@ describe('adapter contracts', () => {
     expectTypeOf(new LokiFsAdapter()).toMatchTypeOf<
       LokiLineStreamAdapter & LokiKeyListingAdapter
     >();
+  });
+
+  it('exposes the fixed IndexedDB chunk size read-only', () => {
+    const adapter = new LokiIndexedDBAdapter();
+    expectTypeOf(adapter.chunkSize).toEqualTypeOf<number>();
+    // @ts-expect-error the chunk size is part of the storage format
+    adapter.chunkSize = 50;
   });
 });
