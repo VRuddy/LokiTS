@@ -84,6 +84,16 @@ describe('LokiOpfsAdapter', () => {
     });
   });
 
+  it('reports a file standing where a directory is expected with EINVAL', async () => {
+    const fake = installFakeOpfs();
+    fake.write('data', 'a file');
+    const adapter = new LokiOpfsAdapter({ directory: 'data/loki' });
+    await expect(adapter.saveDatabase('app.db', '{}')).rejects.toMatchObject({
+      code: 'EINVAL',
+      cause: expect.objectContaining({ name: 'TypeMismatchError' }),
+    });
+  });
+
   it('rejects keys that are not plain file names', async () => {
     installFakeOpfs();
     const adapter = new LokiOpfsAdapter();

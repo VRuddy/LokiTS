@@ -1,4 +1,4 @@
-import { adapterError } from '../errors';
+import { adapterError, translateDomError } from '../errors';
 
 // Files a browser shows next to the target while a writable is open (observed with a probe in each engine).
 export const TEMPORARY_SUFFIXES = ['.crswap'];
@@ -37,7 +37,11 @@ export async function opfsDirectory(path?: string): Promise<FileSystemDirectoryH
   }
   for (const part of (path ?? '').split('/').filter(Boolean)) {
     checkKey(part);
-    dir = await dir.getDirectoryHandle(part, { create: true });
+    try {
+      dir = await dir.getDirectoryHandle(part, { create: true });
+    } catch (err) {
+      throw translateDomError(err, `opening OPFS directory ${path}`);
+    }
   }
   return dir;
 }
