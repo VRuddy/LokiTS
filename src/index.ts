@@ -1,3 +1,4 @@
+import { LokiEncryptedAdapter } from './adapters/EncryptedAdapter';
 import { LokiFsAdapter } from './adapters/FsAdapter';
 import { LokiFsStructuredAdapter } from './adapters/FsStructuredAdapter';
 import { LokiLocalStorageAdapter } from './adapters/LocalStorageAdapter';
@@ -29,6 +30,7 @@ const statics = {
   LokiLocalStorageAdapter,
   LokiFsAdapter,
   LokiFsStructuredAdapter,
+  LokiEncryptedAdapter,
   persistenceAdapters: {
     fs: LokiFsAdapter,
     localStorage: LokiLocalStorageAdapter,
@@ -43,6 +45,7 @@ const statics = {
 export const loki = Object.assign(Loki, statics);
 export default loki;
 
+export type { LokiEncryptedAdapterOptions } from './adapters/EncryptedAdapter';
 export type {
   CheckIndexOptions,
   CollectionChange,
@@ -79,6 +82,7 @@ export {
   freeze,
   KeyValueStore,
   Loki,
+  LokiEncryptedAdapter,
   LokiEventEmitter,
   LokiFsAdapter,
   LokiFsStructuredAdapter,
