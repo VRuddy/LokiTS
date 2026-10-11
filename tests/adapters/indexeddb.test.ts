@@ -401,6 +401,27 @@ describe('LokiIndexedDBAdapter', () => {
     }
   });
 
+  it('isolates an exception thrown by onFetchStart', async () => {
+    const name = uniqueName('fetch-start');
+    const db = new Loki(name, { adapter: new LokiIndexedDBAdapter() });
+    db.addCollection('users').insert({ n: 1 });
+    await db.saveDatabase();
+    const adapter = new LokiIndexedDBAdapter({
+      onFetchStart: () => {
+        throw new Error('user code');
+      },
+    });
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      await expect(adapter.loadDatabase(name)).resolves.toMatchObject({
+        collections: [{ name: 'users' }],
+      });
+      expect(() => vi.runOnlyPendingTimers()).toThrow('user code');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('retries opening after a blocked open', async () => {
     const realOpen = indexedDB.open.bind(indexedDB);
     let calls = 0;
