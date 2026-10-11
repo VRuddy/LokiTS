@@ -79,6 +79,47 @@ describe('writeFileAtomic', () => {
     expect(log).toEqual(['sync-file', 'rename']);
   });
 
+  /** Real I/O whose directory open or sync fails with `code`. */
+  const failingDirectoryIo = (step: 'open' | 'sync', code: string): AtomicWriteIo => {
+    const real = defaultAtomicWriteIo();
+    const failure = () => Object.assign(new Error(`${step} failed`), { code });
+    return {
+      ...real,
+      platform: 'linux',
+      open: async (path, flags) => {
+        if (flags !== 'r') {
+          return real.open(path, flags);
+        }
+        if (step === 'open') {
+          throw failure();
+        }
+        const handle = await real.open(path, flags);
+        return { ...handle, sync: () => Promise.reject(failure()), close: () => handle.close() };
+      },
+    };
+  };
+
+  for (const code of ['EISDIR', 'EINVAL', 'EPERM', 'EACCES', 'ENOTSUP', 'EOPNOTSUPP', 'EBADF']) {
+    it(`ignores a directory sync the system does not support (${code})`, async () => {
+      for (const step of ['open', 'sync'] as const) {
+        const target = join(newDir(), 'app.db');
+        await writeFileAtomic(target, 'x', failingDirectoryIo(step, code));
+        expect(readFileSync(target, 'utf8')).toBe('x');
+      }
+    });
+  }
+
+  it('reports any other directory sync failure', async () => {
+    for (const step of ['open', 'sync'] as const) {
+      const target = join(newDir(), 'app.db');
+      await expect(
+        writeFileAtomic(target, 'x', failingDirectoryIo(step, 'EIO')),
+      ).rejects.toMatchObject({
+        code: 'EIO',
+      });
+    }
+  });
+
   for (const step of ['write', 'sync', 'rename'] as const) {
     it(`removes the temporary file when ${step} fails and keeps the target`, async () => {
       const dir = newDir();

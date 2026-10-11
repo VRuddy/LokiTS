@@ -109,8 +109,19 @@ async function renameWithRetry(io: AtomicWriteIo, from: string, to: string): Pro
   }
 }
 
-// Makes the rename itself durable. Windows cannot open a directory, and some file systems refuse
-// fsync on one: neither is an error, the file is already in place.
+// Codes meaning the system cannot open or fsync a directory (as PostgreSQL treats them): the file is
+// already in place. Anything else (EIO...) may mean the rename is not durable, so it is reported.
+const UNSUPPORTED_DIRECTORY_SYNC = new Set([
+  'EISDIR',
+  'EINVAL',
+  'EPERM',
+  'EACCES',
+  'ENOTSUP',
+  'EOPNOTSUPP',
+  'EBADF',
+]);
+
+// Makes the rename itself durable. Windows cannot open a directory at all.
 async function syncDirectory(io: AtomicWriteIo, dir: string): Promise<void> {
   if (io.platform === 'win32') {
     return;
@@ -122,7 +133,10 @@ async function syncDirectory(io: AtomicWriteIo, dir: string): Promise<void> {
     } finally {
       await handle.close();
     }
-  } catch {
-    // best effort, see above
+  } catch (err) {
+    const code = (err as { code?: string } | null)?.code;
+    if (code === undefined || !UNSUPPORTED_DIRECTORY_SYNC.has(code)) {
+      throw err;
+    }
   }
 }
