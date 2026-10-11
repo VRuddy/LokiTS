@@ -1,40 +1,24 @@
 import { createCipheriv, pbkdf2Sync, randomBytes } from 'node:crypto';
-import { mkdtempSync, readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
 import { Loki, LokiEncryptedAdapter, LokiFsAdapter, LokiMemoryAdapter } from '../../src';
 
-const require = createRequire(import.meta.url);
-const legacyCrypted = require('lokijs/src/loki-crypted-file-adapter.js');
-
 // a low iteration count keeps the tests fast; the default is 600 000
 const fast = (secret: string) => ({ secret, iterations: 1000 });
 
-// the original adapter calls util.isError, which Node flags as deprecated: keep that warning out of the test output
-async function writeWithLegacyAdapter(file: string, data: string, secret: string): Promise<void> {
-  const emitWarning = process.emitWarning;
-  process.emitWarning = ((warning: string | Error, ...rest: unknown[]) => {
-    if (
-      !(
-        rest.some((arg) => arg === 'DEP0048') ||
-        (rest[0] as { code?: string } | undefined)?.code === 'DEP0048'
-      )
-    ) {
-      return (emitWarning as (...args: unknown[]) => void).call(process, warning, ...rest);
-    }
-  }) as typeof process.emitWarning;
-  try {
-    legacyCrypted.setSecret(secret);
-    await new Promise<void>((resolve, reject) =>
-      legacyCrypted.saveDatabase(file, data, (err: unknown) => (err ? reject(err) : resolve())),
-    );
-  } finally {
-    process.emitWarning = emitWarning;
-  }
-}
+// written by lokijs 1.5.12 loki-crypted-file-adapter.js (secret "mySecret"); frozen because it calls util.isError, removed in Node 23
+const legacyCryptedFile = `{
+  "cipher": "aes-256-cbc",
+  "keyDerivation": "pbkdf2",
+  "keyLength": 256,
+  "iterations": 64000,
+  "iv": "qsAJ8vyZUZ6K3E/OdZ8/4Q==",
+  "salt": "jMPJH/UcZf1Azh2/HcMZlnzTR8oEkVoLT/RNYegpwRg=",
+  "value": "GNonCUmH8pRbRLS85/ErbA=="
+}`;
 
 describe('LokiEncryptedAdapter', () => {
   it('round-trips a database and stores nothing in clear', async () => {
@@ -120,7 +104,7 @@ describe('LokiEncryptedAdapter', () => {
 
   it('reads a file written by the original crypted adapter and rewrites it with GCM', async () => {
     const file = join(mkdtempSync(join(tmpdir(), 'loki-crypted-')), 'legacy.db');
-    await writeWithLegacyAdapter(file, '{"legacy":true}', 'mySecret');
+    writeFileSync(file, legacyCryptedFile, 'utf8');
     expect(JSON.parse(readFileSync(file, 'utf8')).cipher).toBe('aes-256-cbc');
 
     const adapter = new LokiEncryptedAdapter(new LokiFsAdapter(), fast('mySecret'));
