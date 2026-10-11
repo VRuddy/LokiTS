@@ -63,6 +63,7 @@
     "test:coverage": "vitest run --coverage",
     "bench": "node benchmark/benchmark.js",
     "bench:fs": "node benchmark/benchmark_fs.js",
+    "bench:browser": "vitest run --config vitest.browser-bench.config.ts",
     "test:dist": "node --test dist-tests/smoke.test.mjs"
   },
   "devDependencies": {
