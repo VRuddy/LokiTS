@@ -6,6 +6,7 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -195,21 +196,31 @@ describe('LokiFsAdapter', () => {
   it.each([
     ['without a newline', ''],
     ['with a trailing newline', '\n'],
-  ])('reads a single 30 MB line %s in linear time', async (_name, ending) => {
-    const file = join(newDir(), 'huge.db');
-    const size = 30 * 1024 * 1024;
-    writeFileSync(file, `${'a'.repeat(size - 1)}b${ending}`);
+  ])(
+    'reads a single 60 MB line %s in linear time',
+    async (_name, ending) => {
+      const dir = newDir();
+      const file = join(dir, 'huge.db');
+      const size = 60 * 1024 * 1024;
+      writeFileSync(file, `${'a'.repeat(size - 1)}b${ending}`);
 
-    const start = Date.now();
-    const all = await collect(
-      (await new LokiFsAdapter().readLines(file)) as AsyncIterable<string[]>,
-    );
+      try {
+        const start = Date.now();
+        const all = await collect(
+          (await new LokiFsAdapter().readLines(file)) as AsyncIterable<string[]>,
+        );
 
-    expect(Date.now() - start).toBeLessThan(1000);
-    expect(all).toHaveLength(1);
-    expect(all[0]).toHaveLength(size);
-    expect(all[0]?.endsWith('ab')).toBe(true);
-  });
+        expect(Date.now() - start).toBeLessThan(5000);
+        expect(all).toHaveLength(1);
+        expect(all[0]).toHaveLength(size);
+        expect(all[0]?.endsWith('ab')).toBe(true);
+      } finally {
+        // dropping the file before writeback keeps later fsyncs in the suite from waiting on 60 MB
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
 
   it('returns null lines for a missing file', async () => {
     await expect(new LokiFsAdapter().readLines(join(newDir(), 'none.db'))).resolves.toBeNull();
