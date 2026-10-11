@@ -32,7 +32,9 @@
 
 var crypto = require("crypto"); // for random string generation
 var loki = require('./engine.js');
-var lfsa = require('../src/loki-fs-structured-adapter.js');
+var lfsa = process.env.LOKI_ENGINE === 'legacy'
+  ? require('lokijs/src/loki-fs-structured-adapter.js')
+  : require('../dist/index.cjs').LokiFsStructuredAdapter;
 
 // number of collections to create and populate
 var numCollections = 2;

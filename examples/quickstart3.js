@@ -7,7 +7,7 @@
  */
 
 const loki = require('../dist/index.cjs').loki;
-const lfsa = require('../src/loki-fs-structured-adapter.js');
+const lfsa = require('../dist/index.cjs').LokiFsStructuredAdapter;
 
 var db = new loki('quickstart3.db', {
   adapter: new lfsa(),

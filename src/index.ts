@@ -1,4 +1,5 @@
 import { LokiFsAdapter } from './adapters/FsAdapter';
+import { LokiFsStructuredAdapter } from './adapters/FsStructuredAdapter';
 import { LokiLocalStorageAdapter } from './adapters/LocalStorageAdapter';
 import { LokiMemoryAdapter } from './adapters/MemoryAdapter';
 import { LokiPartitioningAdapter } from './adapters/PartitioningAdapter';
@@ -79,6 +80,7 @@ export {
   Loki,
   LokiEventEmitter,
   LokiFsAdapter,
+  LokiFsStructuredAdapter,
   LokiLocalStorageAdapter,
   LokiMemoryAdapter,
   LokiOps,
