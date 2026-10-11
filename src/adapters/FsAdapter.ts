@@ -3,37 +3,23 @@ import type { FileHandle } from 'node:fs/promises';
 import { withAdapterCallback } from '../persistence/callbacks';
 import { writeFileAtomic } from './fs/atomic-write';
 import { nodeModules } from './fs/node';
-
-const CHUNK_SIZE = 256 * 1024;
-
-const stripCarriageReturn = (line: string) => (line.endsWith('\r') ? line.slice(0, -1) : line);
+import { CHUNK_SIZE, joinLines, splitLineBatches } from './lines';
 
 // Reading whole chunks and splitting them synchronously avoids several promise ticks per line.
-async function* closingLines(handle: FileHandle): AsyncGenerator<string[]> {
+async function* closingTexts(handle: FileHandle): AsyncGenerator<string> {
   try {
     const decoder = new TextDecoder();
     const buffer = new Uint8Array(CHUNK_SIZE);
-    // unterminated tail kept as pieces: joining on every chunk would make a very long line quadratic
-    let pending: string[] = [];
     for (;;) {
       const { bytesRead } = await handle.read(buffer, 0, CHUNK_SIZE, null);
       if (bytesRead === 0) {
         break;
       }
-      const text = decoder.decode(buffer.subarray(0, bytesRead), { stream: true });
-      if (!text.includes('\n')) {
-        pending.push(text);
-        continue;
-      }
-      const lines = text.split('\n');
-      lines[0] = pending.join('') + lines[0];
-      pending = [lines.pop() as string];
-      yield lines.map(stripCarriageReturn);
+      yield decoder.decode(buffer.subarray(0, bytesRead), { stream: true });
     }
-    pending.push(decoder.decode());
-    const last = pending.join('');
-    if (last !== '') {
-      yield [stripCarriageReturn(last)];
+    const tail = decoder.decode();
+    if (tail) {
+      yield tail;
     }
   } finally {
     // runs on early exit or consumer error too, so the descriptor is never left open
@@ -42,12 +28,6 @@ async function* closingLines(handle: FileHandle): AsyncGenerator<string[]> {
 }
 
 const isMissing = (err: unknown) => (err as { code?: string } | null)?.code === 'ENOENT';
-
-async function* withNewlines(lines: AsyncIterable<string>): AsyncIterable<string> {
-  for await (const line of lines) {
-    yield `${line}\n`;
-  }
-}
 
 /** Node file adapter: one file per database, replaced atomically on every save. */
 export class LokiFsAdapter {
@@ -77,11 +57,11 @@ export class LokiFsAdapter {
       }
       throw err;
     }
-    return closingLines(handle);
+    return splitLineBatches(closingTexts(handle));
   }
 
   writeLines(name: string, lines: AsyncIterable<string>): Promise<void> {
-    return writeFileAtomic(name, withNewlines(lines));
+    return writeFileAtomic(name, joinLines(lines));
   }
 
   async listKeys(prefix: string): Promise<string[]> {
