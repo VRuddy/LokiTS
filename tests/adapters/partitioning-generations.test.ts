@@ -94,6 +94,13 @@ describe('LokiPartitioningAdapter generations', () => {
     }
   });
 
+  it('keeps its internal state out of its own properties', async () => {
+    const adapter = new LokiPartitioningAdapter(new LokiMemoryAdapter());
+    await new Loki('g.db', { adapter }).saveDatabase();
+
+    expect(Object.keys(adapter)).toEqual(['mode', 'adapter', 'options']);
+  });
+
   it('round-trips through Loki.open', async () => {
     const inner = new LokiMemoryAdapter();
     await populated(inner);

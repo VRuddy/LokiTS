@@ -46,6 +46,9 @@ export const loki = Object.assign(Loki, statics);
 export default loki;
 
 export type { LokiEncryptedAdapterOptions } from './adapters/EncryptedAdapter';
+export type { LokiFsStructuredAdapterOptions } from './adapters/FsStructuredAdapter';
+export type { LokiPartitioningAdapterOptions } from './adapters/PartitioningAdapter';
+export type { LegacyFormat } from './adapters/partitioning/legacy';
 export type {
   CheckIndexOptions,
   CollectionChange,

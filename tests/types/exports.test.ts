@@ -12,6 +12,15 @@ describe('public exports', () => {
     expect(new loki('x')).toBeInstanceOf(Loki);
   });
 
+  it('exports the option types of the adapters', () => {
+    expectTypeOf<api.LokiPartitioningAdapterOptions['legacyFormat']>().toEqualTypeOf<
+      api.LegacyFormat | undefined
+    >();
+    expectTypeOf<ConstructorParameters<typeof api.LokiFsStructuredAdapter>[0]>().toEqualTypeOf<
+      api.LokiFsStructuredAdapterOptions | undefined
+    >();
+  });
+
   it('does not leak internal helpers', () => {
     const names = Object.keys(api);
 

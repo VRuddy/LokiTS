@@ -98,13 +98,13 @@ export class LokiPartitioningAdapter {
   adapter!: any;
   options!: LokiPartitioningAdapterOptions;
   /** What is committed for each database, so a save knows which files to keep and which to clean up. */
-  declare states: Map<string, CommittedState>;
+  readonly #states: Map<string, CommittedState>;
   /** The last queued load, save or delete of each database: the next one waits for it. */
-  declare queues: Map<string, Promise<void>>;
+  readonly #queues: Map<string, Promise<void>>;
 
   constructor(adapter?: any, options?: LokiPartitioningAdapterOptions) {
-    this.states = new Map();
-    this.queues = new Map();
+    this.#states = new Map();
+    this.#queues = new Map();
     this.mode = 'reference';
     this.adapter = null;
     this.options = options || {};
@@ -178,16 +178,16 @@ export class LokiPartitioningAdapter {
    * commits; a load answered after a save would record an older state than the one committed.
    */
   private serialized<T>(dbname: string, operation: () => Promise<T>): Promise<T> {
-    const result = (this.queues.get(dbname) ?? Promise.resolve()).then(operation);
+    const result = (this.#queues.get(dbname) ?? Promise.resolve()).then(operation);
     // a failure must not block the operations queued after it
     const tail = result.then(
       () => {},
       () => {},
     );
-    this.queues.set(dbname, tail);
+    this.#queues.set(dbname, tail);
     void tail.then(() => {
-      if (this.queues.get(dbname) === tail) {
-        this.queues.delete(dbname);
+      if (this.#queues.get(dbname) === tail) {
+        this.#queues.delete(dbname);
       }
     });
     return result;
@@ -223,7 +223,7 @@ export class LokiPartitioningAdapter {
   private async load(dbname: string): Promise<Loki | null | undefined> {
     const container = await this.readContainer(dbname);
     if (!container) {
-      this.states.delete(dbname);
+      this.#states.delete(dbname);
       return container as null | undefined;
     }
     const dbref = new Loki(dbname);
@@ -231,7 +231,7 @@ export class LokiPartitioningAdapter {
     const manifest = readManifest(container, dbname);
 
     if (!manifest) {
-      this.states.set(dbname, {
+      this.#states.set(dbname, {
         generation: 0,
         collections: [],
         legacyKeys: await loadLegacyCollections(this.adapter, dbname, dbref, this.legacyOptions()),
@@ -246,7 +246,7 @@ export class LokiPartitioningAdapter {
         manifest.collections[index].files,
       );
     }
-    this.states.set(dbname, {
+    this.#states.set(dbname, {
       generation: manifest.generation,
       collections: manifest.collections,
       legacyKeys: [],
@@ -261,7 +261,7 @@ export class LokiPartitioningAdapter {
 
     // another writer may have committed since this instance last loaded or saved: its files are
     // unknown here, so the stored state is taken as is and nothing is reused
-    const cached = this.states.get(dbname);
+    const cached = this.#states.get(dbname);
     const startText = await this.readContainerText(dbname);
     const container = parseContainer(startText, dbname);
     const committed = container ? readManifest(container, dbname) : undefined;
@@ -304,7 +304,7 @@ export class LokiPartitioningAdapter {
     }
     // the commit: until the container is replaced, loaders still see the previous files
     await callAdapter(this.adapter, 'saveDatabase', [dbname, text], 'write');
-    this.states.set(dbname, { generation, collections, legacyKeys: [] });
+    this.#states.set(dbname, { generation, collections, legacyKeys: [] });
 
     const stored = await this.readContainerText(dbname).catch(() => undefined);
     if (stored !== text) {
@@ -320,7 +320,7 @@ export class LokiPartitioningAdapter {
     const committed = await this.committedManifest(dbname);
     await saveLegacy(this.adapter, dbname, dbref, this.legacyOptions(), committed !== undefined);
     // the next save need not read the container; legacyKeys only serve a conversion, never made here
-    this.states.set(dbname, { generation: 0, collections: [], legacyKeys: [] });
+    this.#states.set(dbname, { generation: 0, collections: [], legacyKeys: [] });
     if (committed) {
       await deleteAll(this.adapter, manifestKeys(dbname, committed)).catch(() => {
         // the historical layout is complete; the generation files are only orphans
@@ -330,7 +330,7 @@ export class LokiPartitioningAdapter {
 
   /** The collections of the manifest the database was last committed through, if any. */
   private async committedManifest(dbname: string): Promise<PartitionEntry[] | undefined> {
-    const state = this.states.get(dbname);
+    const state = this.#states.get(dbname);
     if (state) {
       return state.generation > 0 ? state.collections : undefined;
     }
@@ -385,7 +385,7 @@ export class LokiPartitioningAdapter {
 
   private async remove(dbname: string): Promise<void> {
     const text = await this.readContainerText(dbname);
-    this.states.delete(dbname);
+    this.#states.delete(dbname);
     if (!text) {
       return;
     }
