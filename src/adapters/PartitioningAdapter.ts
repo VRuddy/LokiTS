@@ -38,6 +38,27 @@ interface CommittedState {
   legacyKeys: string[];
 }
 
+function parseContainer(text: string | null | undefined): Record<string, any> | null | undefined {
+  return text ? JSON.parse(text) : (text as null | undefined);
+}
+
+/** Whether the storage still holds what this instance committed or loaded last. */
+function isCommitted(state: CommittedState, manifest: PartitionManifest | undefined): boolean {
+  if (!manifest) {
+    return state.generation === 0;
+  }
+  return (
+    state.generation === manifest.generation &&
+    state.collections.length === manifest.collections.length &&
+    state.collections.every(
+      (entry, index) =>
+        entry.name === manifest.collections[index].name &&
+        entry.files.length === manifest.collections[index].files.length &&
+        entry.files.every((file, page) => file === manifest.collections[index].files[page]),
+    )
+  );
+}
+
 const randomSuffix = () => Math.random().toString(36).slice(2, 6).padEnd(4, '0');
 
 /**
@@ -169,7 +190,7 @@ export class LokiPartitioningAdapter {
     };
   }
 
-  private async readContainer(dbname: string): Promise<Record<string, any> | null | undefined> {
+  private async readContainerText(dbname: string): Promise<string | null | undefined> {
     const text = await callAdapter(this.adapter, 'loadDatabase', [dbname], 'load');
     // falsy: the container does not exist, so neither does the database
     if (!text) {
@@ -180,7 +201,11 @@ export class LokiPartitioningAdapter {
         'LokiPartitioningAdapter received an unexpected response from inner adapter loadDatabase()',
       );
     }
-    return JSON.parse(text);
+    return text;
+  }
+
+  private async readContainer(dbname: string): Promise<Record<string, any> | null | undefined> {
+    return parseContainer(await this.readContainerText(dbname));
   }
 
   private async load(dbname: string): Promise<Loki | null | undefined> {
@@ -222,15 +247,25 @@ export class LokiPartitioningAdapter {
       return this.saveHistorical(dbname, dbref);
     }
 
-    const previous = this.states.get(dbname) ?? (await this.readCommittedState(dbname));
+    // another writer may have committed since this instance last loaded or saved: its files are
+    // unknown here, so the stored state is taken as is and nothing is reused
+    const cached = this.states.get(dbname);
+    const startText = await this.readContainerText(dbname);
+    const container = parseContainer(startText);
+    const committed = container ? readManifest(container, dbname) : undefined;
+    const verified = cached !== undefined && isCommitted(cached, committed);
+    const previous = verified ? cached : await this.committedState(dbname, container, committed);
     const generation = previous.generation + 1;
     const suffix = randomSuffix();
-    const committedFiles = new Map(previous.collections.map((entry) => [entry.name, entry.files]));
+    const reusable = new Map(
+      verified ? previous.collections.map((entry) => [entry.name, entry.files]) : [],
+    );
     const collections: PartitionEntry[] = [];
+    const written: PartitionEntry[] = [];
 
     for (let index = 0; index < dbref.collections.length; index++) {
       const collection = dbref.collections[index];
-      const current = committedFiles.get(collection.name);
+      const current = reusable.get(collection.name);
       if (current && !collection.dirty) {
         collections.push({ name: collection.name, files: current });
         continue;
@@ -243,18 +278,26 @@ export class LokiPartitioningAdapter {
         { enabled: this.options.paging === true, pageSize: this.options.pageSize as number },
       );
       collections.push({ name: collection.name, files });
+      written.push({ name: collection.name, files });
     }
 
     const manifest: PartitionManifest = { version: 1, generation, collections };
+    const text = buildContainer(dbref, manifest);
+    // There is no lock: both checks only narrow the window where two writers delete each other's files.
+    if ((await this.readContainerText(dbname)) !== startText) {
+      await deleteAll(this.adapter, manifestKeys(dbname, written)).catch(() => {});
+      throw new Error(
+        `LokiPartitioningAdapter: another writer committed ${dbname} during this save; nothing was committed`,
+      );
+    }
     // the commit: until the container is replaced, loaders still see the previous files
-    await callAdapter(
-      this.adapter,
-      'saveDatabase',
-      [dbname, buildContainer(dbref, manifest)],
-      'write',
-    );
+    await callAdapter(this.adapter, 'saveDatabase', [dbname, text], 'write');
     this.states.set(dbname, { generation, collections, legacyKeys: [] });
 
+    const stored = await this.readContainerText(dbname).catch(() => undefined);
+    if (stored !== text) {
+      return;
+    }
     await this.cleanUp(dbname, manifest, previous).catch(() => {
       // the commit succeeded; leftover files are orphans removed by a later save
     });
@@ -283,9 +326,11 @@ export class LokiPartitioningAdapter {
     return container ? readManifest(container, dbname)?.collections : undefined;
   }
 
-  private async readCommittedState(dbname: string): Promise<CommittedState> {
-    const container = await this.readContainer(dbname);
-    const manifest = container ? readManifest(container, dbname) : undefined;
+  private async committedState(
+    dbname: string,
+    container: Record<string, any> | null | undefined,
+    manifest: PartitionManifest | undefined,
+  ): Promise<CommittedState> {
     if (manifest) {
       return {
         generation: manifest.generation,

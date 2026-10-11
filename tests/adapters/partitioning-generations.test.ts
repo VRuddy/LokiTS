@@ -42,6 +42,29 @@ class GatedMemoryAdapter extends LokiMemoryAdapter {
   }
 }
 
+/** File adapter that runs `afterWrite` once, after the first write (save or line stream) completes. */
+class HookedFsAdapter extends LokiFsAdapter {
+  afterWrite: ((key: string) => Promise<void> | undefined) | undefined;
+
+  private async hook(key: string): Promise<void> {
+    const run = this.afterWrite?.(key);
+    if (run) {
+      this.afterWrite = undefined;
+      await run;
+    }
+  }
+
+  override async saveDatabase(dbname: string, dbstring: string): Promise<void> {
+    await super.saveDatabase(dbname, dbstring);
+    await this.hook(dbname);
+  }
+
+  override async writeLines(name: string, lines: AsyncIterable<string>): Promise<void> {
+    await super.writeLines(name, lines);
+    await this.hook(name);
+  }
+}
+
 const manifestOf = (inner: LokiMemoryAdapter, name = 'g.db') =>
   JSON.parse(inner.hashStore[name].value).lokiPartitions;
 
@@ -187,6 +210,121 @@ describe('LokiPartitioningAdapter generations', () => {
     const reopened = await Loki.open('g.db', { adapter: new LokiPartitioningAdapter(inner) });
     expect(reopened.getCollection('a')?.count()).toBe(3);
     expect(reopened.getCollection('b')?.count()).toBe(2);
+  });
+
+  it('keeps the database loadable when two instances save in turn', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'loki-generations-'));
+    try {
+      const name = join(dir, 'app.db');
+      const open = () =>
+        Loki.open(name, { adapter: new LokiPartitioningAdapter(new LokiFsAdapter()) });
+      const init = new Loki(name, {
+        adapter: new LokiPartitioningAdapter(new LokiFsAdapter()),
+      });
+      init.addCollection('users').insert({ n: 1 });
+      init.addCollection('gods').insert({ n: 1 });
+      await init.saveDatabase();
+      const first = await open();
+      const second = await open();
+
+      second.getCollection('users')?.insert({ n: 2 });
+      await second.saveDatabase();
+      first.getCollection('gods')?.insert({ n: 2 });
+      await first.saveDatabase();
+
+      // the last commit wins whole: the first instance's users, without the second's insert
+      const reopened = await open();
+      expect(reopened.getCollection('users')?.count()).toBe(1);
+      expect(reopened.getCollection('gods')?.count()).toBe(2);
+      const manifest = JSON.parse(await readFile(name, 'utf8')).lokiPartitions;
+      const files = manifest.collections.map((c: { files: string[] }) => `app.db.${c.files[0]}`);
+      expect((await readdir(dir)).sort()).toEqual(['app.db', ...files].sort());
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rewrites every collection when another instance committed in between', async () => {
+    const inner = new LokiMemoryAdapter();
+    await populated(inner);
+    const first = await Loki.open('g.db', { adapter: new LokiPartitioningAdapter(inner) });
+    const second = await Loki.open('g.db', { adapter: new LokiPartitioningAdapter(inner) });
+
+    second.getCollection('a')?.insert({ x: 3 });
+    await second.saveDatabase();
+    first.getCollection('b')?.insert({ y: 2 });
+    await first.saveDatabase();
+
+    const manifest = manifestOf(inner);
+    expect(manifest.generation).toBe(3);
+    for (const entry of manifest.collections) {
+      expect(entry.files[0]).toMatch(/\.g3-/);
+    }
+    const reopened = await Loki.open('g.db', { adapter: new LokiPartitioningAdapter(inner) });
+    expect(reopened.getCollection('a')?.count()).toBe(2);
+    expect(reopened.getCollection('b')?.count()).toBe(2);
+  });
+
+  it('fails a save when another writer commits during it, and keeps the database loadable', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'loki-generations-'));
+    try {
+      const name = join(dir, 'app.db');
+      const init = new Loki(name, { adapter: new LokiPartitioningAdapter(new LokiFsAdapter()) });
+      init.addCollection('users').insert({ n: 1 });
+      init.addCollection('gods').insert({ n: 1 });
+      await init.saveDatabase();
+      const hooked = new HookedFsAdapter();
+      const first = await Loki.open(name, { adapter: new LokiPartitioningAdapter(hooked) });
+      const second = await Loki.open(name, {
+        adapter: new LokiPartitioningAdapter(new LokiFsAdapter()),
+      });
+      second.getCollection('users')?.insert({ n: 2 });
+      hooked.afterWrite = (key) => (key === name ? undefined : second.saveDatabase());
+
+      first.getCollection('gods')?.insert({ n: 2 });
+      await expect(first.saveDatabase()).rejects.toThrow(/another writer committed/);
+
+      const reopened = await Loki.open(name, {
+        adapter: new LokiPartitioningAdapter(new LokiFsAdapter()),
+      });
+      expect(reopened.getCollection('users')?.count()).toBe(2);
+      expect(reopened.getCollection('gods')?.count()).toBe(1);
+      expect(await readdir(dir)).toHaveLength(3);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('leaves the files alone when another writer commits right after a save', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'loki-generations-'));
+    try {
+      const name = join(dir, 'app.db');
+      const init = new Loki(name, { adapter: new LokiPartitioningAdapter(new LokiFsAdapter()) });
+      init.addCollection('users').insert({ n: 1 });
+      await init.saveDatabase();
+      const hooked = new HookedFsAdapter();
+      const first = await Loki.open(name, { adapter: new LokiPartitioningAdapter(hooked) });
+      const second = await Loki.open(name, {
+        adapter: new LokiPartitioningAdapter(new LokiFsAdapter()),
+      });
+      second.getCollection('users')?.insert({ n: 2 });
+      hooked.afterWrite = (key) => (key === name ? second.saveDatabase() : undefined);
+
+      first.getCollection('users')?.insert({ n: 3 });
+      await first.saveDatabase();
+
+      const reopened = await Loki.open(name, {
+        adapter: new LokiPartitioningAdapter(new LokiFsAdapter()),
+      });
+      expect(
+        reopened
+          .getCollection('users')
+          ?.find()
+          .map((doc) => doc.n),
+      ).toEqual([1, 2]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it('serializes a save and a delete of the same database', async () => {
