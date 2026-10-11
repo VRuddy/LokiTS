@@ -150,19 +150,55 @@ export class LokiIndexedDBAdapter {
         invoke(this.options.onversionchange, event);
       }
     };
+    // closed by the browser (storage cleared, IndexedDB server lost): reopen on the next operation
+    db.onclose = () => {
+      if (this.#idb === db) {
+        this.#close();
+      }
+    };
     this.#idb = db;
     this.#idbName = dbname;
     return db;
   }
 
+  // `run` gets the transaction synchronously (no await in between), while it is still active
+  async #withTransaction<T>(
+    dbname: string,
+    mode: IDBTransactionMode,
+    context: string,
+    run: (tx: IDBTransaction) => Promise<T>,
+  ): Promise<T> {
+    let db = await this.#open(dbname);
+    let tx: IDBTransaction;
+    try {
+      tx = db.transaction([STORE], mode);
+    } catch (err) {
+      // the connection can be closed before onclose fires: reopen once
+      if ((err as { name?: unknown } | null)?.name !== 'InvalidStateError') {
+        throw translateDomError(err, context);
+      }
+      if (this.#idb === db) {
+        this.#close();
+      }
+      db = await this.#open(dbname);
+      try {
+        tx = db.transaction([STORE], mode);
+      } catch (retryErr) {
+        throw translateDomError(retryErr, context);
+      }
+    }
+    return run(tx);
+  }
+
   async #load(dbname: string): Promise<object | null> {
-    const db = await this.#open(dbname);
     const deserialize = this.options.deserializeChunk;
-    const chunks = await readAllChunks(
-      db,
-      this.megachunkCount,
-      (chunk: StoredChunk) => parseChunk(chunk, deserialize, this.lazyCollections),
-      this.options.onFetchStart,
+    const chunks = await this.#withTransaction(dbname, 'readonly', 'reading IndexedDB', (tx) =>
+      readAllChunks(
+        tx,
+        this.megachunkCount,
+        (chunk: StoredChunk) => parseChunk(chunk, deserialize, this.lazyCollections),
+        this.options.onFetchStart,
+      ),
     );
     if (chunks.length === 0) {
       return null;
@@ -183,15 +219,14 @@ export class LokiIndexedDBAdapter {
   }
 
   async #save(dbname: string, getLokiCopy: () => any): Promise<void> {
-    const db = await this.#open(dbname);
-    await new Promise<void>((resolve, reject) => {
-      let tx: IDBTransaction;
-      try {
-        tx = db.transaction([STORE], 'readwrite');
-      } catch (err) {
-        reject(translateDomError(err, `saving IndexedDB ${dbname}`));
-        return;
-      }
+    const context = `saving IndexedDB ${dbname}`;
+    await this.#withTransaction(dbname, 'readwrite', context, (tx) =>
+      this.#write(tx, getLokiCopy, context),
+    );
+  }
+
+  #write(tx: IDBTransaction, getLokiCopy: SaveArgs[1], context: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
       const store = tx.objectStore(STORE);
       let failure: unknown;
       let saved = null as { versionId: string; maxIds: Map<string, number> | null } | null;
@@ -211,7 +246,7 @@ export class LokiIndexedDBAdapter {
         reject(
           translateDomError(
             failure ?? tx.error ?? new Error('IndexedDB transaction aborted'),
-            `saving IndexedDB ${dbname}`,
+            context,
           ),
         );
       };
@@ -287,6 +322,8 @@ export class LokiIndexedDBAdapter {
     });
   }
 }
+
+type SaveArgs = Parameters<LokiIndexedDBAdapter['saveDatabase']>;
 
 // null when a maxId is unknown (a collection stored without metadata): the next save is then a full one
 function maxIdsOf(collections: { name: string; maxId?: unknown }[]): Map<string, number> | null {

@@ -87,19 +87,12 @@ function createKeyRanges(keys: IDBValidKey[], count: number): IDBKeyRange[] {
  * a time, so the main thread parses while IndexedDB fetches.
  */
 export function readAllChunks(
-  db: IDBDatabase,
+  tx: IDBTransaction,
   megachunkCount: number,
   parse: (chunk: StoredChunk) => ParsedChunk,
   onFetchStart?: () => void,
 ): Promise<ParsedChunk[]> {
   return new Promise((resolve, reject) => {
-    let tx: IDBTransaction;
-    try {
-      tx = db.transaction([STORE], 'readonly');
-    } catch (err) {
-      reject(translateDomError(err, 'reading IndexedDB'));
-      return;
-    }
     const store = tx.objectStore(STORE);
     const fail = (err: unknown) => reject(translateDomError(err, 'reading IndexedDB'));
     const parsed: ParsedChunk[] = [];

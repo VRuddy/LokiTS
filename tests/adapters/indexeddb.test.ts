@@ -476,6 +476,55 @@ describe('LokiIndexedDBAdapter', () => {
     expect(reloaded.getCollection('users')?.count()).toBe(251);
   });
 
+  function captureConnections(): IDBDatabase[] {
+    const connections: IDBDatabase[] = [];
+    const realOpen = indexedDB.open.bind(indexedDB);
+    vi.spyOn(indexedDB, 'open').mockImplementation((name: string, version?: number) => {
+      const request = realOpen(name, version);
+      request.addEventListener('success', () => connections.push(request.result));
+      return request;
+    });
+    return connections;
+  }
+
+  it('reopens after the browser closed the connection (onclose)', async () => {
+    const connections = captureConnections();
+    const name = uniqueName('onclose');
+    const db = new Loki(name, { adapter: new LokiIndexedDBAdapter() });
+    const users = db.addCollection('users');
+    users.insert({ n: 1 });
+    await db.saveDatabase();
+    expect(connections).toHaveLength(1);
+    const [lost] = connections;
+    lost.close();
+    lost.onclose?.call(lost, new Event('close'));
+    const transaction = vi.spyOn(lost, 'transaction');
+
+    users.insert({ n: 2 });
+    await db.saveDatabase();
+    expect(transaction).not.toHaveBeenCalled();
+    expect(connections).toHaveLength(2);
+    const reloaded = await Loki.open(name, { adapter: new LokiIndexedDBAdapter() });
+    expect(reloaded.getCollection('users')?.count()).toBe(2);
+  });
+
+  it('reopens once when the connection turns out to be closed', async () => {
+    const connections = captureConnections();
+    const name = uniqueName('closed');
+    const adapter = new LokiIndexedDBAdapter();
+    const db = new Loki(name, { adapter });
+    const users = db.addCollection('users');
+    users.insert({ n: 1 });
+    await db.saveDatabase();
+    // closed without onclose, as when it fires after the next operation started
+    connections[0].close();
+    users.insert({ n: 2 });
+    await db.saveDatabase();
+    connections[1].close();
+    expect(await adapter.loadDatabase(name)).toMatchObject({ collections: [{ name: 'users' }] });
+    expect(connections).toHaveLength(3);
+  });
+
   it('deserializes lazy collections on first access', async () => {
     const name = uniqueName('lazy');
     const db = new Loki(name, { adapter: new LokiIndexedDBAdapter() });
