@@ -100,6 +100,26 @@ describe('IndexedDB compatibility with lokijs 1.5.12', () => {
     expect(db.getCollection('users')?.count()).toBe(1);
   });
 
+  it('shows the cleared-collection bug on lokijs and not on LokiTS', async () => {
+    const scenario = async (db: any, save: () => Promise<void>) => {
+      const users = db.addCollection('users');
+      users.insert(Array.from({ length: 250 }, (_, n) => ({ n })));
+      await save();
+      users.clear();
+      users.insert({ n: 'new' });
+      await save();
+    };
+    const legacy = new LegacyLoki('cleared-lokijs.db', { adapter: new LegacyIncremental() });
+    await scenario(legacy, () => legacySave(legacy));
+    // chunks 1 and 2 written before clear() come back
+    expect((await legacyOpen('cleared-lokijs.db')).getCollection('users').count()).toBe(152);
+
+    const ours = new Loki('cleared-lokits.db', { adapter: new LokiIndexedDBAdapter() });
+    await scenario(ours, () => ours.saveDatabase());
+    const db = await Loki.open('cleared-lokits.db', { adapter: new LokiIndexedDBAdapter() });
+    expect(db.getCollection('users')?.count()).toBe(1);
+  });
+
   it('shows the renamed-collection bug on lokijs and not on LokiTS', async () => {
     const legacy = new LegacyLoki('renamed-lokijs.db', { adapter: new LegacyIncremental() });
     legacy.addCollection('users').insert([{ n: 1 }, { n: 2 }]);

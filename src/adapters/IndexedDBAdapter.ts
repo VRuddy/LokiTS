@@ -44,8 +44,9 @@ export class LokiIndexedDBAdapter {
   // what this adapter last saved or loaded, and for which database
   #prevFor: string | null;
   #prevLokiVersionId: string | null;
-  // names known to be stored: a save that lost one of them rewrites everything (removed or renamed)
-  #prevNames: Set<string> | null;
+  // maxId of each stored collection: a save where one is missing, new or lower (removed, renamed,
+  // recreated, cleared) rewrites everything, since stale chunks beyond the new maxId would come back
+  #prevMaxIds: Map<string, number> | null;
   #queue: Promise<unknown>;
 
   constructor(options: LokiIndexedDBAdapterOptions = {}) {
@@ -58,7 +59,7 @@ export class LokiIndexedDBAdapter {
     this.#idbName = null;
     this.#prevFor = null;
     this.#prevLokiVersionId = null;
-    this.#prevNames = null;
+    this.#prevMaxIds = null;
     this.#queue = Promise.resolve();
 
     if (!(this.megachunkCount >= 4 && this.megachunkCount % 2 === 0)) {
@@ -131,7 +132,7 @@ export class LokiIndexedDBAdapter {
     if (this.#prevFor !== dbname) {
       this.#prevFor = dbname;
       this.#prevLokiVersionId = null;
-      this.#prevNames = null;
+      this.#prevMaxIds = null;
     }
     const db = await openDatabase(indexedDBFactory(), dbname);
     db.onversionchange = (event) => {
@@ -167,11 +168,11 @@ export class LokiIndexedDBAdapter {
         lazyCollections: this.lazyCollections,
       });
       this.#prevLokiVersionId = loki.idbVersionId || null;
-      this.#prevNames = new Set(loki.collections.map((c: { name: string }) => c.name));
+      this.#prevMaxIds = maxIdsOf(loki.collections);
       return loki;
     } catch (err) {
       this.#prevLokiVersionId = null;
-      this.#prevNames = null;
+      this.#prevMaxIds = null;
       throw err;
     }
   }
@@ -188,13 +189,13 @@ export class LokiIndexedDBAdapter {
       }
       const store = tx.objectStore(STORE);
       let failure: unknown;
-      let saved = null as { versionId: string; names: Set<string> } | null;
+      let saved = null as { versionId: string; maxIds: Map<string, number> | null } | null;
       let overwrote = false;
 
       tx.oncomplete = () => {
         if (saved) {
           this.#prevLokiVersionId = saved.versionId;
-          this.#prevNames = saved.names;
+          this.#prevMaxIds = saved.maxIds;
         }
         resolve();
         if (overwrote && this.options.onDidOverwrite) {
@@ -226,8 +227,9 @@ export class LokiIndexedDBAdapter {
             store.delete(key);
           },
         };
+        const maxIds = maxIdsOf(loki.collections);
         const versionId = writeChunks(sink, loki, full, this.options);
-        saved = { versionId, names: new Set(namesOf(loki)) };
+        saved = { versionId, maxIds };
         (tx as IDBTransaction & { commit?: () => void }).commit?.();
       };
 
@@ -237,12 +239,9 @@ export class LokiIndexedDBAdapter {
         store.get('loki'),
         (record) => {
           const loki = getLokiCopy();
-          const names = namesOf(loki);
           const stored = versionIdOf(record as StoredChunk | undefined);
           const ours = stored !== null && stored === this.#prevLokiVersionId;
-          const lostName =
-            this.#prevNames !== null && [...this.#prevNames].some((name) => !names.includes(name));
-          if (ours && !lostName) {
+          if (ours && this.#onlyGrew(loki.collections)) {
             write(loki, null);
             return;
           }
@@ -260,7 +259,7 @@ export class LokiIndexedDBAdapter {
     }
     if (this.#prevFor === dbname) {
       this.#prevLokiVersionId = null;
-      this.#prevNames = null;
+      this.#prevMaxIds = null;
     }
     const factory = indexedDBFactory();
     await new Promise<void>((resolve, reject) => {
@@ -271,7 +270,27 @@ export class LokiIndexedDBAdapter {
       // onblocked: the deletion completes once the other connections close on versionchange
     });
   }
+
+  #onlyGrew(collections: CollectionLike[]): boolean {
+    const prev = this.#prevMaxIds;
+    if (prev === null || prev.size !== collections.length) {
+      return false;
+    }
+    return collections.every((collection) => {
+      const maxId = prev.get(collection.name);
+      return maxId !== undefined && collection.maxId >= maxId;
+    });
+  }
 }
 
-const namesOf = (loki: { collections: CollectionLike[] }): string[] =>
-  loki.collections.map((collection) => collection.name);
+// null when a maxId is unknown (a collection stored without metadata): the next save is then a full one
+function maxIdsOf(collections: { name: string; maxId?: unknown }[]): Map<string, number> | null {
+  const maxIds = new Map<string, number>();
+  for (const collection of collections) {
+    if (typeof collection.maxId !== 'number') {
+      return null;
+    }
+    maxIds.set(collection.name, collection.maxId);
+  }
+  return maxIds;
+}

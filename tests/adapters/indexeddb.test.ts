@@ -229,6 +229,51 @@ describe('LokiIndexedDBAdapter', () => {
     expect(reloaded.getCollection('users')?.count()).toBe(1);
   });
 
+  it('does not resurrect documents after clear()', async () => {
+    const name = uniqueName('cleared');
+    const db = new Loki(name, { adapter: new LokiIndexedDBAdapter() });
+    const users = db.addCollection('users');
+    users.insert(Array.from({ length: 250 }, (_, n) => ({ n })));
+    await db.saveDatabase();
+    users.clear();
+    users.insert({ n: 'new' });
+    await db.saveDatabase();
+
+    const reloaded = await Loki.open(name, { adapter: new LokiIndexedDBAdapter() });
+    expect(reloaded.getCollection('users')?.count()).toBe(1);
+    expect(await rawGet(name, 'users.chunk.1')).toBeUndefined();
+  });
+
+  it('does not resurrect documents of a collection removed and recreated between two saves', async () => {
+    const name = uniqueName('recreated');
+    const db = new Loki(name, { adapter: new LokiIndexedDBAdapter() });
+    db.addCollection('users').insert(Array.from({ length: 250 }, (_, n) => ({ n })));
+    await db.saveDatabase();
+    db.removeCollection('users');
+    db.addCollection('users').insert({ n: 'new' });
+    await db.saveDatabase();
+
+    const reloaded = await Loki.open(name, { adapter: new LokiIndexedDBAdapter() });
+    expect(reloaded.getCollection('users')?.count()).toBe(1);
+  });
+
+  it('keeps $loki unique after clear(), a reload and new inserts', async () => {
+    const name = uniqueName('cleared-ids');
+    const db = new Loki(name, { adapter: new LokiIndexedDBAdapter() });
+    const users = db.addCollection<{ n: number | string }>('users');
+    users.insert(Array.from({ length: 250 }, (_, n) => ({ n })));
+    await db.saveDatabase();
+    users.clear();
+    users.insert({ n: 'new-0' });
+    await db.saveDatabase();
+
+    const reloaded = await Loki.open(name, { adapter: new LokiIndexedDBAdapter() });
+    const again = reloaded.getCollection<{ n: number | string }>('users')!;
+    again.insert(Array.from({ length: 150 }, (_, i) => ({ n: `new-${i + 1}` })));
+    expect(again.count()).toBe(151);
+    expect(again.get(120)?.n).toBe('new-119');
+  });
+
   it('keeps the documents of a renamed collection', async () => {
     const name = uniqueName('renamed');
     const db = new Loki(name, { adapter: new LokiIndexedDBAdapter() });
