@@ -1,11 +1,12 @@
 // Smoke test du build publié (dist/), exécutable sur Node 20+ sans Vitest :
 //   pnpm build && node --test dist-tests/smoke.test.mjs
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 
@@ -68,4 +69,11 @@ test("CJS : require() renvoie le constructeur, comme le module lokijs d'origine"
   assert.equal(Loki.Collection, Loki.loki.Collection);
   assert.equal(Loki.default, Loki);
   assert.equal(typeof Loki.LokiOps.$eq, 'function');
+});
+
+test('le build n’embarque plus l’ancien adaptateur IndexedDB', () => {
+  for (const file of ['../dist/index.js', '../dist/index.cjs']) {
+    const code = readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8');
+    assert.equal(code.includes('LokiCatalog'), false, file);
+  }
 });

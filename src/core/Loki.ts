@@ -206,18 +206,6 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
     return this.saveQueue.busy;
   }
 
-  // experimental support for browserify's abstract syntax scan to pick up dependency of indexed adapter.
-  // Hopefully, once this hits npm a browserify require of lokijs should scan the main file and detect this indexed adapter reference.
-  getIndexedAdapter(): any {
-    let adapter: any;
-
-    if (typeof require === 'function') {
-      adapter = require('../loki-indexed-adapter.js');
-    }
-
-    return adapter;
-  }
-
   /**
    * Allows reconfiguring database options
    *
