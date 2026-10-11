@@ -1,6 +1,7 @@
 import { LokiEncryptedAdapter } from './adapters/EncryptedAdapter';
 import { LokiFsAdapter } from './adapters/FsAdapter';
 import { LokiFsStructuredAdapter } from './adapters/FsStructuredAdapter';
+import { LokiIndexedDBAdapter } from './adapters/IndexedDBAdapter';
 import { LokiLocalStorageAdapter } from './adapters/LocalStorageAdapter';
 import { LokiMemoryAdapter } from './adapters/MemoryAdapter';
 import { LokiPartitioningAdapter } from './adapters/PartitioningAdapter';
@@ -31,6 +32,7 @@ const statics = {
   LokiFsAdapter,
   LokiFsStructuredAdapter,
   LokiEncryptedAdapter,
+  LokiIndexedDBAdapter,
   persistenceAdapters: {
     fs: LokiFsAdapter,
     localStorage: LokiLocalStorageAdapter,
@@ -47,6 +49,7 @@ export default loki;
 
 export type { LokiEncryptedAdapterOptions } from './adapters/EncryptedAdapter';
 export type { LokiFsStructuredAdapterOptions } from './adapters/FsStructuredAdapter';
+export type { LokiIndexedDBAdapterOptions } from './adapters/IndexedDBAdapter';
 export type { LokiPartitioningAdapterOptions } from './adapters/PartitioningAdapter';
 export type { LegacyFormat } from './adapters/partitioning/legacy';
 export type {
@@ -89,6 +92,7 @@ export {
   LokiEventEmitter,
   LokiFsAdapter,
   LokiFsStructuredAdapter,
+  LokiIndexedDBAdapter,
   LokiLocalStorageAdapter,
   LokiMemoryAdapter,
   LokiOps,
