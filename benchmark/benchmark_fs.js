@@ -34,29 +34,36 @@ function time(label, run) {
 }
 
 (async () => {
-  const setups = [
-    ['single file', () => new loki.LokiFsAdapter()],
-    ['partitioned', () => new Structured()],
-  ];
-  for (const [label, makeAdapter] of setups) {
-    const file = join(dir, `${label.replace(' ', '-')}.db`);
-    const db = new loki(file, { adapter: makeAdapter() });
-    const items = fill(db);
-    for (let round = 0; round < 3; round++) {
-      // touch one document so the partitioned save rewrites the collection every round
-      items.update(items.get(1));
-      await time(`${label} save`, (done) => db.saveDatabase(done));
-      await time(`${label} load`, (done) => {
-        const fresh = new loki(file, { adapter: makeAdapter() });
-        fresh.loadDatabase({}, (err) => {
-          if (!err && fresh.getCollection('items').count() !== 100000) {
-            done(new Error('incomplete load'));
-            return;
-          }
-          done(err);
+  try {
+    const setups = [
+      ['single file', () => new loki.LokiFsAdapter()],
+      ['partitioned', () => new Structured()],
+    ];
+    for (const [label, makeAdapter] of setups) {
+      const file = join(dir, `${label.replace(' ', '-')}.db`);
+      const db = new loki(file, { adapter: makeAdapter() });
+      const items = fill(db);
+      for (let round = 0; round < 3; round++) {
+        // touch one document so the partitioned save rewrites the collection every round
+        items.update(items.get(1));
+        await time(`${label} save`, (done) => db.saveDatabase(done));
+        await time(`${label} load`, (done) => {
+          const fresh = new loki(file, { adapter: makeAdapter() });
+          fresh.loadDatabase({}, (err) => {
+            const loaded = fresh.getCollection('items');
+            if (!err && (!loaded || loaded.count() !== 100000)) {
+              done(new Error('incomplete load'));
+              return;
+            }
+            done(err);
+          });
         });
-      });
+      }
     }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
-  rmSync(dir, { recursive: true, force: true });
-})();
+})().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});
