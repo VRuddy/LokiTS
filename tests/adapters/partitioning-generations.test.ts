@@ -433,11 +433,28 @@ describe('LokiPartitioningAdapter generations', () => {
   it('reports a listed file that is missing', async () => {
     const inner = new LokiMemoryAdapter();
     await populated(inner);
-    delete inner.hashStore[keyOf(manifestOf(inner).collections[0].files[0])];
+    const key = keyOf(manifestOf(inner).collections[0].files[0]);
+    delete inner.hashStore[key];
 
     await expect(
       Loki.open('g.db', { adapter: new LokiPartitioningAdapter(inner) }),
-    ).rejects.toThrow(/is missing/);
+    ).rejects.toMatchObject({
+      code: 'ENOENT',
+      path: key,
+      message: `LokiPartitioningAdapter: partition ${key} is missing`,
+    });
+  });
+
+  it('names the file holding invalid JSON', async () => {
+    const inner = new LokiMemoryAdapter();
+    await populated(inner);
+    const key = keyOf(manifestOf(inner).collections[0].files[0]);
+    inner.hashStore[key].value = '{"x":1}\n{"x":';
+
+    const failure = Loki.open('g.db', { adapter: new LokiPartitioningAdapter(inner) });
+
+    await expect(failure).rejects.toThrow(`partition ${key} holds invalid JSON`);
+    await expect(failure).rejects.toBeInstanceOf(SyntaxError);
   });
 
   it('leaves the original intact when a copy of the database is saved', async () => {
@@ -892,7 +909,20 @@ describe('LokiPartitioningAdapter line streams', () => {
 
     await expect(
       Loki.open('s.db', { adapter: new LokiPartitioningAdapter(inner) }),
-    ).rejects.toThrow(/is missing/);
+    ).rejects.toMatchObject({ code: 'ENOENT', path: `s.db.${file}` });
+  });
+
+  it('names the streamed file holding invalid JSON', async () => {
+    const inner = new LineMemoryAdapter();
+    const db = new Loki('s.db', { adapter: new LokiPartitioningAdapter(inner) });
+    db.addCollection('a').insert({ x: 1 });
+    await db.saveDatabase();
+    const [file] = JSON.parse(inner.hashStore['s.db'].value).lokiPartitions.collections[0].files;
+    inner.hashStore[`s.db.${file}`].value = '{"x":\n';
+
+    await expect(
+      Loki.open('s.db', { adapter: new LokiPartitioningAdapter(inner) }),
+    ).rejects.toThrow(`partition s.db.${file} holds invalid JSON`);
   });
 
   it('round-trips an empty collection through the stream', async () => {

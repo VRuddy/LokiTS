@@ -139,9 +139,10 @@ describe('LokiFsStructuredAdapter', () => {
     await legacySave(legacy);
     writeFileSync(`${file}.0`, '{"name":"odin"\n');
 
-    await expect(
-      Loki.open(file, { adapter: new LokiFsStructuredAdapter() }),
-    ).rejects.toBeInstanceOf(SyntaxError);
+    const failure = Loki.open(file, { adapter: new LokiFsStructuredAdapter() });
+
+    await expect(failure).rejects.toBeInstanceOf(SyntaxError);
+    await expect(failure).rejects.toThrow(`partition ${file}.0 holds invalid JSON`);
   });
 
   it('reports write errors', async () => {

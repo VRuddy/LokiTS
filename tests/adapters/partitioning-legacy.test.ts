@@ -122,10 +122,28 @@ describe('LokiPartitioningAdapter, historical format', () => {
     await sampleDb(new LokiPartitioningAdapter(inner, { generations: false })).saveDatabase();
     delete inner.hashStore['p.db.0'];
 
-    await expect(new LokiPartitioningAdapter(inner).loadDatabase('p.db')).rejects.toThrow(
-      'partition p.db.0 is missing',
-    );
+    await expect(new LokiPartitioningAdapter(inner).loadDatabase('p.db')).rejects.toMatchObject({
+      code: 'ENOENT',
+      path: 'p.db.0',
+      message: 'LokiPartitioningAdapter: partition p.db.0 is missing',
+    });
   });
+
+  for (const [paging, key] of [
+    [false, 'p.db.0'],
+    [true, 'p.db.0.0'],
+  ] as const) {
+    it(`names the partition holding invalid JSON (paging: ${paging})`, async () => {
+      const inner = new LokiMemoryAdapter();
+      const options = { generations: false, paging };
+      await sampleDb(new LokiPartitioningAdapter(inner, options)).saveDatabase();
+      inner.hashStore[key].value = `{"name":${inner.hashStore[key].value}`;
+
+      await expect(
+        new LokiPartitioningAdapter(inner, options).loadDatabase('p.db'),
+      ).rejects.toThrow(`partition ${key} holds invalid JSON`);
+    });
+  }
 
   it('round-trips a lines database without collections', async () => {
     const inner = new LokiMemoryAdapter();

@@ -1,5 +1,5 @@
 import { callAdapter } from '../../persistence/adapter-bridge';
-import { fileKey, isLineStream, missingFile } from './format';
+import { fileKey, invalidJson, isLineStream, missingFile } from './format';
 
 export interface PagingOptions {
   enabled: boolean;
@@ -72,11 +72,7 @@ export async function readCollection(
         throw missingFile(key);
       }
       for await (const batch of lines) {
-        for (const line of batch) {
-          if (line !== '') {
-            docs.push(JSON.parse(line));
-          }
-        }
+        pushLines(docs, batch, key);
       }
       continue;
     }
@@ -84,11 +80,20 @@ export async function readCollection(
     if (text === null || text === undefined) {
       throw missingFile(key);
     }
-    for (const line of (text as string).split('\n')) {
+    pushLines(docs, (text as string).split('\n'), key);
+  }
+  return docs;
+}
+
+/** Parses one document per non-empty line into `docs`. */
+export function pushLines(docs: unknown[], lines: string[], key: string): void {
+  try {
+    for (const line of lines) {
       if (line !== '') {
         docs.push(JSON.parse(line));
       }
     }
+  } catch (err) {
+    throw invalidJson(key, err);
   }
-  return docs;
 }

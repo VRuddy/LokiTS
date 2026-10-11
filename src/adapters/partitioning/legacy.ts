@@ -1,6 +1,7 @@
 import type { Loki } from '../../core/Loki';
 import { callAdapter } from '../../persistence/adapter-bridge';
-import { buildContainer, isLineStream, missingFile } from './format';
+import { pushLines } from './collection-io';
+import { buildContainer, invalidJson, isLineStream, missingFile } from './format';
 
 export type LegacyFormat = 'partitioning' | 'lines';
 
@@ -51,10 +52,14 @@ export async function loadLegacyCollections(
       if (result === null || result === undefined) {
         throw missingFile(partitionKey(dbname, index));
       }
-      collection.data = dbref.deserializeCollection(result as string, {
-        delimited: true,
-        collectionIndex: index,
-      });
+      try {
+        collection.data = dbref.deserializeCollection(result as string, {
+          delimited: true,
+          collectionIndex: index,
+        });
+      } catch (err) {
+        throw invalidJson(partitionKey(dbname, index), err);
+      }
     }
     keys.push(partitionKey(dbname, index));
   }
@@ -69,11 +74,7 @@ async function readLines(inner: object, key: string): Promise<any[]> {
       throw missingFile(key);
     }
     for await (const batch of lines) {
-      for (const line of batch) {
-        if (line !== '') {
-          docs.push(JSON.parse(line));
-        }
-      }
+      pushLines(docs, batch, key);
     }
     return docs;
   }
@@ -81,11 +82,7 @@ async function readLines(inner: object, key: string): Promise<any[]> {
   if (text === null || text === undefined) {
     throw missingFile(key);
   }
-  for (const line of (text as string).split('\n')) {
-    if (line !== '') {
-      docs.push(JSON.parse(line));
-    }
-  }
+  pushLines(docs, (text as string).split('\n'), key);
   return docs;
 }
 
@@ -113,8 +110,12 @@ async function readPages(
         rows.pop();
       }
     }
-    for (const row of rows) {
-      docs.push(JSON.parse(row));
+    try {
+      for (const row of rows) {
+        docs.push(JSON.parse(row));
+      }
+    } catch (err) {
+      throw invalidJson(key, err);
     }
     if (isLastPage) {
       return docs;

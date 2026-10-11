@@ -97,4 +97,10 @@ export const canListKeys = (adapter: unknown): adapter is LokiKeyListingAdapter 
   typeof (adapter as LokiKeyListingAdapter)?.listKeys === 'function';
 
 export const missingFile = (name: string) =>
-  new Error(`LokiPartitioningAdapter: partition ${name} is missing`);
+  Object.assign(new Error(`LokiPartitioningAdapter: partition ${name} is missing`), {
+    code: 'ENOENT',
+    path: name,
+  });
+
+export const invalidJson = (name: string, cause: unknown) =>
+  new SyntaxError(`LokiPartitioningAdapter: partition ${name} holds invalid JSON`, { cause });
