@@ -61,6 +61,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "bench": "node benchmark/benchmark.js",
+    "bench:fs": "node benchmark/benchmark_fs.js",
     "test:dist": "node --test dist-tests/smoke.test.mjs"
   },
   "devDependencies": {
