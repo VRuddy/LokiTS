@@ -171,6 +171,46 @@ describe('LokiFsAdapter', () => {
     expect(all).toEqual(['a', long, '', '日本語', 'last']);
   });
 
+  it.each([
+    ['2-byte', 'é'],
+    ['3-byte', '日'],
+    ['4-byte', '😀'],
+  ])('keeps a %s character straddling the 256 KiB boundary whole', async (_name, char) => {
+    const chunk = 256 * 1024;
+    const width = Buffer.byteLength(char);
+    // each offset leaves a different number of the character's bytes before the boundary
+    for (let before = 1; before < width; before++) {
+      const line = `${'x'.repeat(chunk - before)}${char}${char}tail`;
+      const file = join(newDir(), `straddle-${before}.db`);
+      writeFileSync(file, `${line}\nnext\n`);
+
+      const all = await collect(
+        (await new LokiFsAdapter().readLines(file)) as AsyncIterable<string[]>,
+      );
+
+      expect(all).toEqual([line, 'next']);
+    }
+  });
+
+  it.each([
+    ['without a newline', ''],
+    ['with a trailing newline', '\n'],
+  ])('reads a single 30 MB line %s in linear time', async (_name, ending) => {
+    const file = join(newDir(), 'huge.db');
+    const size = 30 * 1024 * 1024;
+    writeFileSync(file, `${'a'.repeat(size - 1)}b${ending}`);
+
+    const start = Date.now();
+    const all = await collect(
+      (await new LokiFsAdapter().readLines(file)) as AsyncIterable<string[]>,
+    );
+
+    expect(Date.now() - start).toBeLessThan(1000);
+    expect(all).toHaveLength(1);
+    expect(all[0]).toHaveLength(size);
+    expect(all[0]?.endsWith('ab')).toBe(true);
+  });
+
   it('returns null lines for a missing file', async () => {
     await expect(new LokiFsAdapter().readLines(join(newDir(), 'none.db'))).resolves.toBeNull();
   });

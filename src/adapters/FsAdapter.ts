@@ -13,23 +13,27 @@ async function* closingLines(handle: FileHandle): AsyncGenerator<string[]> {
   try {
     const decoder = new TextDecoder();
     const buffer = new Uint8Array(CHUNK_SIZE);
-    let carry = '';
+    // unterminated tail kept as pieces: joining on every chunk would make a very long line quadratic
+    let pending: string[] = [];
     for (;;) {
       const { bytesRead } = await handle.read(buffer, 0, CHUNK_SIZE, null);
       if (bytesRead === 0) {
         break;
       }
-      const parts = (carry + decoder.decode(buffer.subarray(0, bytesRead), { stream: true })).split(
-        '\n',
-      );
-      carry = parts.pop() as string;
-      if (parts.length > 0) {
-        yield parts.map(stripCarriageReturn);
+      const text = decoder.decode(buffer.subarray(0, bytesRead), { stream: true });
+      if (!text.includes('\n')) {
+        pending.push(text);
+        continue;
       }
+      const lines = text.split('\n');
+      lines[0] = pending.join('') + lines[0];
+      pending = [lines.pop() as string];
+      yield lines.map(stripCarriageReturn);
     }
-    carry += decoder.decode();
-    if (carry !== '') {
-      yield [stripCarriageReturn(carry)];
+    pending.push(decoder.decode());
+    const last = pending.join('');
+    if (last !== '') {
+      yield [stripCarriageReturn(last)];
     }
   } finally {
     // runs on early exit or consumer error too, so the descriptor is never left open
