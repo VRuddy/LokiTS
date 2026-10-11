@@ -164,12 +164,23 @@ export class LokiEncryptedAdapter {
         );
         return decoder.decode(plain);
       }
-      const key = await this.keyFor(envelope.salt, envelope.iterations);
+      const cached = this.cachedKey;
+      const reusable = cached?.salt === envelope.salt && cached.iterations === envelope.iterations;
+      const key = reusable
+        ? cached.key
+        : await deriveKey(this.secret, fromBase64(envelope.salt), envelope.iterations, 'SHA-256', {
+            name: 'AES-GCM',
+            length: 256,
+          });
       const plain = await subtle().decrypt(
         { name: 'AES-GCM', iv: fromBase64(envelope.iv) },
         key,
         fromBase64(envelope.value),
       );
+      // the file's key parameters are adopted only once they authenticated, and never below the configured cost
+      if (!reusable && envelope.iterations >= this.iterations) {
+        this.cachedKey = { salt: envelope.salt, iterations: envelope.iterations, key };
+      }
       return decoder.decode(plain);
     } catch (err) {
       throw new Error('LokiEncryptedAdapter: wrong secret or corrupted data', { cause: err });
@@ -194,25 +205,16 @@ export class LokiEncryptedAdapter {
     await callAdapter(this.inner, 'saveDatabase', [dbname, JSON.stringify(envelope)], 'write');
   }
 
-  // PBKDF2 is deliberately slow: derive once per salt and reuse the key for every save
-  private async keyFor(salt: string, iterations: number): Promise<CryptoKey> {
-    const cached = this.cachedKey;
-    if (cached && cached.salt === salt && cached.iterations === iterations) {
-      return cached.key;
-    }
-    const key = await deriveKey(this.secret, fromBase64(salt), iterations, 'SHA-256', {
-      name: 'AES-GCM',
-      length: 256,
-    });
-    this.cachedKey = { salt, iterations, key };
-    return key;
-  }
-
   private async encryptionKey(): Promise<CachedKey> {
+    // PBKDF2 is deliberately slow: derive once and reuse the key for every save
     if (!this.cachedKey) {
       const salt = toBase64(globalThis.crypto.getRandomValues(new Uint8Array(16)));
-      await this.keyFor(salt, this.iterations);
+      const key = await deriveKey(this.secret, fromBase64(salt), this.iterations, 'SHA-256', {
+        name: 'AES-GCM',
+        length: 256,
+      });
+      this.cachedKey = { salt, iterations: this.iterations, key };
     }
-    return this.cachedKey as CachedKey;
+    return this.cachedKey;
   }
 }

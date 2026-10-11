@@ -145,6 +145,49 @@ describe('LokiEncryptedAdapter', () => {
     await expect(adapter.loadDatabase(file)).resolves.toBeNull();
   });
 
+  it('never reuses key parameters from an envelope that failed to authenticate', async () => {
+    const inner = new LokiMemoryAdapter();
+    const adapter = new LokiEncryptedAdapter(inner, fast('s'));
+    const zeroSalt = Buffer.alloc(16).toString('base64');
+    await inner.saveDatabase(
+      'e.db',
+      JSON.stringify({
+        format: 'loki-encrypted',
+        version: 1,
+        cipher: 'aes-256-gcm',
+        kdf: 'pbkdf2-sha256',
+        iterations: 1,
+        salt: zeroSalt,
+        iv: Buffer.alloc(12).toString('base64'),
+        value: Buffer.alloc(32).toString('base64'),
+      }),
+    );
+    await expect(adapter.loadDatabase('e.db')).rejects.toThrow('wrong secret or corrupted data');
+
+    await adapter.saveDatabase('e.db', 'data');
+
+    const envelope = JSON.parse(inner.hashStore['e.db'].value);
+    expect(envelope.iterations).toBe(1000);
+    expect(envelope.salt).not.toBe(zeroSalt);
+  });
+
+  it('upgrades a file written with fewer iterations than configured', async () => {
+    const inner = new LokiMemoryAdapter();
+    await new LokiEncryptedAdapter(inner, { secret: 's', iterations: 500 }).saveDatabase(
+      'e.db',
+      'old',
+    );
+    const adapter = new LokiEncryptedAdapter(inner, fast('s'));
+
+    await expect(adapter.loadDatabase('e.db')).resolves.toBe('old');
+    await adapter.saveDatabase('e.db', 'new');
+
+    expect(JSON.parse(inner.hashStore['e.db'].value).iterations).toBe(1000);
+    await expect(new LokiEncryptedAdapter(inner, fast('s')).loadDatabase('e.db')).resolves.toBe(
+      'new',
+    );
+  });
+
   it('requires a secret', () => {
     expect(() => new LokiEncryptedAdapter(new LokiMemoryAdapter(), { secret: '' })).toThrow(
       'requires a secret',
