@@ -35,6 +35,7 @@
 * new LokiEncryptedAdapter wraps a string adapter (not a reference or incremental one) and encrypts what it stores with AES-256-GCM (WebCrypto, PBKDF2-SHA256, 600 000 iterations by default); it replaces loki-crypted-file-adapter.js and reads its files. Iterations are bounded, key parameters read from a file are adopted only after it authenticates and never below the configured cost, and the secret is kept as a non-extractable key in private fields
 * saves to disk pay for their fsyncs and are slower than lokijs; partitioned loads are on par with lokijs (`pnpm bench:fs`)
 * fix: renameCollection did not mark the collection dirty, so autosave skipped a rename alone, and a partitioned save could reload a collection renamed over another (or swapped) with the other's documents
+* fix: removeCollection did not mark the following collections dirty, so a partitioned save with `generations: false` (the layout lokijs reads) reloaded them with the documents of the collection previously at their position
 * fix: fs-structured databases without collections never finished loading; a corrupted line was reported and the load carried on; write errors were ignored
 * fix: the crypted adapter was a singleton with one secret per process, failed on a missing database and did not detect modified files
 * fix: LokiFsAdapter lost error codes and could leave a temporary file or a truncated database after a failure; LokiPartitioningAdapter had no deleteDatabase

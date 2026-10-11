@@ -125,6 +125,9 @@ describe('LokiPartitioningAdapter generations', () => {
     const bFiles = manifestOf(inner).collections[1].files;
 
     db.removeCollection('a');
+    // removeCollection marks the shifted collections dirty for the historical layout; undone
+    // here to check that the manifest matches files by name, not position
+    (db.getCollection('b') as any).dirty = false;
     await db.saveDatabase();
 
     const reopened = await Loki.open('g.db', { adapter: new LokiPartitioningAdapter(inner) });

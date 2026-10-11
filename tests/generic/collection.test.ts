@@ -26,6 +26,21 @@ describe('collection', () => {
     expect(db.autosaveDirty()).toBe(true);
   });
 
+  it('collection removal marks the following collections dirty', () => {
+    const db = new loki('test.db');
+    db.addCollection('a');
+    db.addCollection('b');
+    db.addCollection('c');
+    db.autosaveClearFlags();
+
+    db.removeCollection('b');
+
+    expect(db.collections.map((c: any) => [c.name, c.dirty])).toEqual([
+      ['a', false],
+      ['c', true],
+    ]);
+  });
+
   it('works', () => {
     // Breaking change : Collection est une classe ES, le sous-classage ES5
     // (`Collection.apply(this, args)`) n'est plus possible ; on utilise `extends`.

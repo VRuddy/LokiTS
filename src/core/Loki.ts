@@ -490,6 +490,10 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
           }
         }
         this.collections.splice(i, 1);
+        // partitioned layouts store collections by position: the shifted ones must be rewritten
+        for (let j = i; j < this.collections.length; j++) {
+          this.collections[j].dirty = true;
+        }
         return;
       }
     }

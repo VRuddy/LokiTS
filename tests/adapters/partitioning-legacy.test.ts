@@ -92,6 +92,31 @@ describe('LokiPartitioningAdapter, historical format', () => {
     }
   });
 
+  for (const paging of [false, true]) {
+    it(`reloads the remaining collections after a removal (paging: ${paging})`, async () => {
+      const inner = new LokiMemoryAdapter();
+      const options = { generations: false, paging, pageSize: 20 };
+      const db = new Loki('p.db', { adapter: new LokiPartitioningAdapter(inner, options) });
+      db.addCollection('a').insert({ who: 'a' });
+      db.addCollection('b').insert({ who: 'b' });
+      db.addCollection('c').insert({ who: 'c' });
+      await db.saveDatabase();
+
+      db.removeCollection('a');
+      await db.saveDatabase();
+
+      const reopened = await Loki.open('p.db', {
+        adapter: new LokiPartitioningAdapter(inner, options),
+      });
+      expect(
+        reopened.collections.map((c) => [c.name, c.data.map((doc: { who: string }) => doc.who)]),
+      ).toEqual([
+        ['b', ['b']],
+        ['c', ['c']],
+      ]);
+    });
+  }
+
   it('reports a missing non-paged partition explicitly', async () => {
     const inner = new LokiMemoryAdapter();
     await sampleDb(new LokiPartitioningAdapter(inner, { generations: false })).saveDatabase();
