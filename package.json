@@ -59,6 +59,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tests",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:coverage": "vitest run --coverage",
     "bench": "node benchmark/benchmark.js",
     "bench:fs": "node benchmark/benchmark_fs.js",
@@ -67,9 +68,12 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
     "@types/node": "^26.6.4",
+    "@vitest/browser": "5.0.3",
+    "@vitest/browser-playwright": "5.0.3",
     "@vitest/coverage-v8": "^5.0.3",
     "fake-indexeddb": "^6.2.5",
     "lokijs": "1.5.12",
+    "playwright": "1.64.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^5.0.3"
