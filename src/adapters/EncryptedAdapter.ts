@@ -37,6 +37,7 @@ interface CachedKey {
 }
 
 const DEFAULT_ITERATIONS = 600_000;
+const MAX_ITERATIONS = 10_000_000;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const subtle = () => globalThis.crypto.subtle;
@@ -77,30 +78,52 @@ async function deriveKey(
   ]);
 }
 
+const notEncrypted = () =>
+  new Error('LokiEncryptedAdapter: the stored data is not encrypted by Loki');
+const invalidEnvelope = (detail: string) =>
+  new Error(`LokiEncryptedAdapter: invalid encrypted envelope (${detail})`);
+const isIterations = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= MAX_ITERATIONS;
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === 'string' && value !== '';
+
+// the parameters come from the file, so they are bounded before any key derivation
 function parseEnvelope(stored: string): Envelope | LegacyEnvelope {
   let parsed: any;
   try {
     parsed = JSON.parse(stored);
   } catch {
-    throw new Error('LokiEncryptedAdapter: the stored data is not encrypted by Loki');
+    throw notEncrypted();
+  }
+  if (parsed === null || typeof parsed !== 'object') {
+    throw notEncrypted();
+  }
+  const legacy =
+    parsed.cipher === 'aes-256-cbc' && parsed.format === undefined && parsed.version === undefined;
+  if (parsed.format !== 'loki-encrypted' && !legacy) {
+    throw notEncrypted();
+  }
+  if (!legacy) {
+    if (parsed.version !== 1) {
+      throw new Error('LokiEncryptedAdapter: unsupported encrypted format version');
+    }
+    if (parsed.cipher !== 'aes-256-gcm' || parsed.kdf !== 'pbkdf2-sha256') {
+      throw invalidEnvelope('unsupported cipher or key derivation');
+    }
+  } else if (![128, 192, 256].includes(parsed.keyLength)) {
+    throw invalidEnvelope('unsupported key length');
+  }
+  if (!isIterations(parsed.iterations)) {
+    throw invalidEnvelope(`iterations must be an integer between 1 and ${MAX_ITERATIONS}`);
   }
   if (
-    parsed?.format === 'loki-encrypted' &&
-    parsed.version === 1 &&
-    parsed.cipher === 'aes-256-gcm'
+    !isNonEmptyString(parsed.salt) ||
+    !isNonEmptyString(parsed.iv) ||
+    !isNonEmptyString(parsed.value)
   ) {
-    return parsed as Envelope;
+    throw invalidEnvelope('salt, iv and value must be strings');
   }
-  if (
-    parsed?.cipher === 'aes-256-cbc' &&
-    parsed.version === undefined &&
-    parsed.salt &&
-    parsed.iv &&
-    parsed.value
-  ) {
-    return parsed as LegacyEnvelope;
-  }
-  throw new Error('LokiEncryptedAdapter: the stored data is not encrypted by Loki');
+  return parsed as Envelope | LegacyEnvelope;
 }
 
 /** Encrypts what another adapter stores (AES-256-GCM, key derived from a secret with PBKDF2-SHA256). */
@@ -119,7 +142,13 @@ export class LokiEncryptedAdapter {
     }
     this.inner = inner;
     this.secret = options.secret;
-    this.iterations = options.iterations ?? DEFAULT_ITERATIONS;
+    const iterations = options.iterations ?? DEFAULT_ITERATIONS;
+    if (!isIterations(iterations)) {
+      throw new Error(
+        `LokiEncryptedAdapter iterations must be an integer between 1 and ${MAX_ITERATIONS}`,
+      );
+    }
+    this.iterations = iterations;
     this.cachedKey = undefined;
   }
 

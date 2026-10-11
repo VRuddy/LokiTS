@@ -188,6 +188,74 @@ describe('LokiEncryptedAdapter', () => {
     );
   });
 
+  describe('envelope validation', () => {
+    const gcm = (overrides: Record<string, unknown>) => ({
+      format: 'loki-encrypted',
+      version: 1,
+      cipher: 'aes-256-gcm',
+      kdf: 'pbkdf2-sha256',
+      iterations: 1000,
+      salt: Buffer.alloc(16).toString('base64'),
+      iv: Buffer.alloc(12).toString('base64'),
+      value: Buffer.alloc(32).toString('base64'),
+      ...overrides,
+    });
+    const legacy = (overrides: Record<string, unknown>) => ({
+      cipher: 'aes-256-cbc',
+      keyDerivation: 'pbkdf2',
+      keyLength: 256,
+      iterations: 1000,
+      salt: Buffer.alloc(32).toString('base64'),
+      iv: Buffer.alloc(16).toString('base64'),
+      value: Buffer.alloc(32).toString('base64'),
+      ...overrides,
+    });
+    const loadStored = async (envelope: unknown) => {
+      const inner = new LokiMemoryAdapter();
+      await inner.saveDatabase('e.db', JSON.stringify(envelope));
+      const derive = vi.spyOn(globalThis.crypto.subtle, 'deriveKey');
+      try {
+        return await new LokiEncryptedAdapter(inner, fast('s'))
+          .loadDatabase('e.db')
+          .catch((err: Error) => {
+            expect(derive).not.toHaveBeenCalled();
+            throw err;
+          });
+      } finally {
+        derive.mockRestore();
+      }
+    };
+
+    it.each([
+      ['GCM iterations beyond the bound', gcm({ iterations: 2 ** 31 - 1 })],
+      ['GCM zero iterations', gcm({ iterations: 0 })],
+      ['GCM fractional iterations', gcm({ iterations: 10.5 })],
+      ['GCM string iterations', gcm({ iterations: '1000' })],
+      ['legacy iterations beyond the bound', legacy({ iterations: 2 ** 31 - 1 })],
+      ['legacy key length', legacy({ keyLength: 64 })],
+      ['another key derivation', gcm({ kdf: 'pbkdf2-sha1' })],
+      ['a non-string salt', gcm({ salt: 12 })],
+      ['a non-string iv', gcm({ iv: null })],
+      ['a non-string value', gcm({ value: {} })],
+    ])('rejects %s before deriving a key', async (_name, envelope) => {
+      await expect(loadStored(envelope)).rejects.toThrow('invalid encrypted envelope');
+    });
+
+    it('reports an unsupported format version', async () => {
+      await expect(loadStored(gcm({ version: 2 }))).rejects.toThrow(
+        'unsupported encrypted format version',
+      );
+    });
+
+    it('rejects an invalid iterations option', () => {
+      for (const iterations of [0, -1, 1.5, 10_000_001, Number.NaN]) {
+        expect(
+          () => new LokiEncryptedAdapter(new LokiMemoryAdapter(), { secret: 's', iterations }),
+        ).toThrow('iterations must be an integer');
+      }
+    });
+  });
+
   it('requires a secret', () => {
     expect(() => new LokiEncryptedAdapter(new LokiMemoryAdapter(), { secret: '' })).toThrow(
       'requires a secret',
