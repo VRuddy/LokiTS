@@ -38,8 +38,20 @@ interface CommittedState {
   legacyKeys: string[];
 }
 
-function parseContainer(text: string | null | undefined): Record<string, any> | null | undefined {
-  return text ? JSON.parse(text) : (text as null | undefined);
+function parseContainer(
+  text: string | null | undefined,
+  dbname: string,
+): Record<string, unknown> | null | undefined {
+  if (!text) {
+    return text as null | undefined;
+  }
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    throw new Error(`LokiPartitioningAdapter: the container ${dbname} is not valid JSON`, {
+      cause: err,
+    });
+  }
 }
 
 /** Whether the storage still holds what this instance committed or loaded last. */
@@ -204,8 +216,8 @@ export class LokiPartitioningAdapter {
     return text;
   }
 
-  private async readContainer(dbname: string): Promise<Record<string, any> | null | undefined> {
-    return parseContainer(await this.readContainerText(dbname));
+  private async readContainer(dbname: string): Promise<Record<string, unknown> | null | undefined> {
+    return parseContainer(await this.readContainerText(dbname), dbname);
   }
 
   private async load(dbname: string): Promise<Loki | null | undefined> {
@@ -251,7 +263,7 @@ export class LokiPartitioningAdapter {
     // unknown here, so the stored state is taken as is and nothing is reused
     const cached = this.states.get(dbname);
     const startText = await this.readContainerText(dbname);
-    const container = parseContainer(startText);
+    const container = parseContainer(startText, dbname);
     const committed = container ? readManifest(container, dbname) : undefined;
     const verified = cached !== undefined && isCommitted(cached, committed);
     const previous = verified ? cached : await this.committedState(dbname, container, committed);
@@ -328,7 +340,7 @@ export class LokiPartitioningAdapter {
 
   private async committedState(
     dbname: string,
-    container: Record<string, any> | null | undefined,
+    container: Record<string, unknown> | null | undefined,
     manifest: PartitionManifest | undefined,
   ): Promise<CommittedState> {
     if (manifest) {
@@ -372,17 +384,19 @@ export class LokiPartitioningAdapter {
   }
 
   private async remove(dbname: string): Promise<void> {
-    const container = await this.readContainer(dbname);
+    const text = await this.readContainerText(dbname);
     this.states.delete(dbname);
-    if (!container) {
+    if (!text) {
       return;
     }
+    let container: Record<string, unknown> = {};
     let manifest: PartitionManifest | undefined;
     let trusted = true;
     try {
+      container = parseContainer(text, dbname) as Record<string, unknown>;
       manifest = readManifest(container, dbname);
     } catch (err) {
-      // an invalid manifest names nothing to trust: only the generation files found by listing go
+      // an unreadable container or manifest names nothing to trust: only listed generation files go
       if (!canListKeys(this.adapter)) {
         throw err;
       }

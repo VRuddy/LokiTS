@@ -536,6 +536,33 @@ describe('LokiPartitioningAdapter generations', () => {
     }
   });
 
+  it('reports an unreadable container, refuses to save over it, and deletes it', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'loki-generations-'));
+    try {
+      const name = join(dir, 'app.db');
+      const adapter = () => new LokiPartitioningAdapter(new LokiFsAdapter());
+      const db = new Loki(name, { adapter: adapter() });
+      db.addCollection('a').insert({ x: 1 });
+      await db.saveDatabase();
+      await writeFile(name, '{"truncated');
+      const files = (await readdir(dir)).sort();
+
+      await expect(Loki.open(name, { adapter: adapter() })).rejects.toThrow(
+        `LokiPartitioningAdapter: the container ${name} is not valid JSON`,
+      );
+      db.getCollection('a')?.insert({ x: 2 });
+      await expect(db.saveDatabase()).rejects.toThrow('is not valid JSON');
+      expect((await readdir(dir)).sort()).toEqual(files);
+
+      await adapter().deleteDatabase(name);
+      expect(await readdir(dir)).toEqual([]);
+      await db.saveDatabase();
+      expect((await Loki.open(name, { adapter: adapter() })).getCollection('a')?.count()).toBe(2);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('refuses to delete a database with an invalid manifest without listing', async () => {
     const inner = new LokiMemoryAdapter();
     await populated(inner);
