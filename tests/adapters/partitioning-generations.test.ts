@@ -640,7 +640,7 @@ class LineMemoryAdapter extends LokiMemoryAdapter {
   streamedWrites = 0;
   streamedReads = 0;
 
-  async readLines(name: string): Promise<AsyncIterable<string> | null> {
+  async readLines(name: string): Promise<AsyncIterable<string[]> | null> {
     const stored = this.hashStore[name];
     if (!stored) {
       return null;
@@ -648,7 +648,7 @@ class LineMemoryAdapter extends LokiMemoryAdapter {
     this.streamedReads++;
     const lines = stored.value.split('\n');
     return (async function* () {
-      yield* lines;
+      yield lines;
     })();
   }
 

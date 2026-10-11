@@ -39,8 +39,11 @@ export interface LegacyLokiAdapter {
 
 /** Line-oriented I/O, used by LokiPartitioningAdapter to stream large collections. */
 export interface LokiLineStreamAdapter {
-  /** Lines of the stored value without terminators, or `null` when the key does not exist. */
-  readLines(name: string): Promise<AsyncIterable<string> | null>;
+  /**
+   * Lines of the stored value without terminators, in order, delivered in batches to spare an
+   * async step per line (empty lines may appear). `null` when the key does not exist.
+   */
+  readLines(name: string): Promise<AsyncIterable<string[]> | null>;
   writeLines(name: string, lines: AsyncIterable<string>): Promise<void>;
 }
 

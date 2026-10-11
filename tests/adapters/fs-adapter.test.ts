@@ -31,10 +31,10 @@ function openDescriptorsOn(file: string) {
   }).length;
 }
 
-async function collect(lines: AsyncIterable<string>) {
+async function collect(batches: AsyncIterable<string[]>) {
   const out: string[] = [];
-  for await (const line of lines) {
-    out.push(line);
+  for await (const batch of batches) {
+    out.push(...batch);
   }
   return out;
 }
@@ -100,7 +100,7 @@ describe('LokiFsAdapter', () => {
     const lines = await adapter.readLines(file);
 
     expect(readFileSync(file, 'utf8').endsWith('line 99999\n')).toBe(true);
-    const all = await collect(lines as AsyncIterable<string>);
+    const all = await collect(lines as AsyncIterable<string[]>);
     expect(all).toHaveLength(100_000);
     expect(all[0]).toBe('line 0');
     expect(all[50_000]).toBe('line 50000');
@@ -123,8 +123,8 @@ describe('LokiFsAdapter', () => {
       const adapter = new LokiFsAdapter();
       await adapter.writeLines(file, numbered(1000));
 
-      for await (const line of (await adapter.readLines(file)) as AsyncIterable<string>) {
-        expect(line).toBe('line 0');
+      for await (const batch of (await adapter.readLines(file)) as AsyncIterable<string[]>) {
+        expect(batch[0]).toBe('line 0');
         break;
       }
 
@@ -139,7 +139,7 @@ describe('LokiFsAdapter', () => {
       await adapter.writeLines(file, numbered(1000));
 
       const consume = async () => {
-        for await (const _line of (await adapter.readLines(file)) as AsyncIterable<string>) {
+        for await (const _batch of (await adapter.readLines(file)) as AsyncIterable<string[]>) {
           throw new Error('bad line');
         }
       };
@@ -153,10 +153,22 @@ describe('LokiFsAdapter', () => {
       const adapter = new LokiFsAdapter();
       await adapter.writeLines(file, numbered(10));
 
-      await collect((await adapter.readLines(file)) as AsyncIterable<string>);
+      await collect((await adapter.readLines(file)) as AsyncIterable<string[]>);
 
       expect(openDescriptorsOn(file)).toBe(0);
     });
+  });
+
+  it('reads lines across chunk boundaries, CRLF and multi-byte characters', async () => {
+    const file = join(newDir(), 'mixed.db');
+    const long = 'é'.repeat(300_000);
+    writeFileSync(file, `a\r\n${long}\n\n日本語\nlast`);
+
+    const all = await collect(
+      (await new LokiFsAdapter().readLines(file)) as AsyncIterable<string[]>,
+    );
+
+    expect(all).toEqual(['a', long, '', '日本語', 'last']);
   });
 
   it('returns null lines for a missing file', async () => {

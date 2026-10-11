@@ -68,9 +68,11 @@ async function readLines(inner: object, key: string): Promise<any[]> {
     if (lines === null) {
       throw missingFile(key);
     }
-    for await (const line of lines) {
-      if (line !== '') {
-        docs.push(JSON.parse(line));
+    for await (const batch of lines) {
+      for (const line of batch) {
+        if (line !== '') {
+          docs.push(JSON.parse(line));
+        }
       }
     }
     return docs;

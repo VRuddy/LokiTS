@@ -4,10 +4,33 @@ import { withAdapterCallback } from '../persistence/callbacks';
 import { writeFileAtomic } from './fs/atomic-write';
 import { nodeModules } from './fs/node';
 
-async function* closingLines(handle: FileHandle): AsyncGenerator<string> {
+const CHUNK_SIZE = 256 * 1024;
+
+const stripCarriageReturn = (line: string) => (line.endsWith('\r') ? line.slice(0, -1) : line);
+
+// Reading whole chunks and splitting them synchronously avoids several promise ticks per line.
+async function* closingLines(handle: FileHandle): AsyncGenerator<string[]> {
   try {
-    // no autoClose: when the stream closes the handle itself, handle.close() returns before the descriptor is released
-    yield* handle.readLines({ encoding: 'utf8', autoClose: false });
+    const decoder = new TextDecoder();
+    const buffer = new Uint8Array(CHUNK_SIZE);
+    let carry = '';
+    for (;;) {
+      const { bytesRead } = await handle.read(buffer, 0, CHUNK_SIZE, null);
+      if (bytesRead === 0) {
+        break;
+      }
+      const parts = (carry + decoder.decode(buffer.subarray(0, bytesRead), { stream: true })).split(
+        '\n',
+      );
+      carry = parts.pop() as string;
+      if (parts.length > 0) {
+        yield parts.map(stripCarriageReturn);
+      }
+    }
+    carry += decoder.decode();
+    if (carry !== '') {
+      yield [stripCarriageReturn(carry)];
+    }
   } finally {
     // runs on early exit or consumer error too, so the descriptor is never left open
     await handle.close();
@@ -40,7 +63,7 @@ export class LokiFsAdapter {
     return withAdapterCallback(this.remove(dbname), callback, 'write') as Promise<void>;
   }
 
-  async readLines(name: string): Promise<AsyncIterable<string> | null> {
+  async readLines(name: string): Promise<AsyncIterable<string[]> | null> {
     let handle: FileHandle;
     try {
       handle = await nodeModules().fsp.open(name, 'r');
