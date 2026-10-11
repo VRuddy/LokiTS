@@ -206,7 +206,7 @@ let db = new loki('loki.json',{
 ## Autosave, Autoload and close()
 LokiJS now supports automatic saving at user defined intervals, configured via loki constructor options.  This is supported for all persistenceMethods.  Data is only saved if changes have occurred since the last save.  You can also specify an autoload to immediately load a saved database during new loki construction.  If you need to process anything on load completion you can also specify your own autoloadCallback.  Finally, in an autosave scenario, if the user wants to exit or is notified of leaving the webpage (window.onbeforeunload) you can call close() on the database which will perform a final save (if needed).
 
-> _**Note : the ability of loki to 'flush' data on events such as a browsers onbeforeunload event, depends on the storage adapter being synchronous.  Local storage and file system adapters are synchronous but indexeddb is asynchronous and cannot save when triggered from db.close() in an onbeforeunload event.  The mouseleave event may allow enough time to perform a preemptive save.**_
+> _**Note : flushing data from an event such as the browser's onbeforeunload only works if the adapter writes before the handler returns. `close()` returns a promise that settles later, but LokiLocalStorageAdapter calls `localStorage.setItem` synchronously inside `close()`, so its final save is written. LokiIndexedDBAdapter and LokiOpfsAdapter write asynchronously: the page may be gone before the write completes, so do not rely on `close()` in onbeforeunload with them. Saving earlier (autosave, or on `visibilitychange` when the page is hidden) is safer.**_
 
 
 ### Autosave example
