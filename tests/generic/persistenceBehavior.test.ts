@@ -164,6 +164,24 @@ describe('loading', () => {
     adapter.loads[1].respond('{not json');
     expect(await parseError).toBeInstanceOf(Error);
   });
+
+  it('applies removals to a collection loaded through getData', () => {
+    const source = new loki('behavior.db');
+    source.addCollection('users').insert([{ n: 1 }, { n: 2 }, { n: 3 }]);
+    const dbObject = JSON.parse(source.serialize());
+    const docs = dbObject.collections[0].data;
+    dbObject.collections[0].data = [];
+    dbObject.collections[0].getData = () => docs;
+
+    const db = new loki('behavior.db');
+    db.loadJSONObject(dbObject);
+    const users = db.getCollection('users');
+    users.findAndRemove({ n: { $gte: 2 } });
+
+    expect(users.count()).toBe(1);
+    expect(users.data.map((doc: { n: number }) => doc.n)).toEqual([1]);
+    expect(JSON.parse(db.serialize()).collections[0].data).toHaveLength(1);
+  });
 });
 
 describe('deleting', () => {

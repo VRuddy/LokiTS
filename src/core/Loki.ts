@@ -1031,7 +1031,12 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
           get: function (this: { getData: (() => unknown) | null }) {
             const data = this.getData?.();
             this.getData = null;
-            Object.defineProperty(this, 'data', { value: data });
+            Object.defineProperty(this, 'data', {
+              value: data,
+              writable: true,
+              enumerable: true,
+              configurable: true,
+            });
             return data;
           },
         });
