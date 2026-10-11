@@ -1,86 +1,56 @@
 # LokiTS
 
-Modernisation TypeScript de [LokiJS](https://github.com/techfort/LokiJS), une
-base de données NoSQL orientée document, fonctionnant en mémoire.
+**English** | [Français](README.fr.md)
 
-> **Projet en cours de reprise.** LokiTS est un fork communautaire indépendant,
-> pas un projet officiel de l’auteur original. L’API et le nom du package
-> peuvent encore évoluer avant une première version stable.
-
-L’objectif est de conserver les performances et les concepts utiles de LokiJS
-(collections, index binaires, DynamicViews et requêtes inspirées de MongoDB)
-tout en modernisant progressivement le code, le typage et l’outillage.
-
-## Fonctionnalités héritées
-
-- Base de données NoSQL en mémoire orientée document
-- Collections avec index uniques et index binaires
-- Dynamic Views pour les sous-ensembles de données
-- Requêtes et transformations inspirées de MongoDB
-- Adaptateurs de persistance extensibles
-- Compatibilité historique navigateur et Node.js
-
-## État actuel
-
-La migration TypeScript n’est pas encore publiée comme package stable. Pour le
-moment, l’implémentation JavaScript héritée reste dans `src/`.
-
-```bash
-pnpm install   # Node >= 22.12 pour le développement
-pnpm test       # Vitest
-pnpm check      # Biome (lint + format)
-pnpm typecheck  # tsc --noEmit
-pnpm build      # tsup -> dist/ (ESM + CJS + .d.ts)
-```
-
-### Persistance
+An in-memory document database written in strict TypeScript. Queries are synchronous and run in memory;
+persistence is asynchronous and goes to OPFS, IndexedDB, localStorage or the file system. LokiTS is the
+maintained successor to [LokiJS](https://github.com/techfort/LokiJS) and to its TypeScript rewrite LokiDB, which
+are no longer developed.
 
 ```ts
-import { Loki, LokiFsAdapter } from 'loki-ts';
+import { Loki } from '@lokits/core';
 
-const db = await Loki.open('app.db', { adapter: new LokiFsAdapter() });
-const users = db.getCollection('users') ?? db.addCollection('users');
-users.insert({ name: 'odin' });
-await db.saveDatabase();
+const db = await Loki.open('app.db', { autosave: true });
+const users = db.getCollection<{ name: string; age: number }>('users') ?? db.addCollection('users');
+
+users.insert({ name: 'odin', age: 50 });
+users.find({ age: { $gte: 40 } }); // [{ name: 'odin', age: 50, $loki: 1, meta: { ... } }]
 ```
 
-Les méthodes de persistance renvoient des Promises et acceptent toujours leur callback d’origine.
+## Why LokiTS
 
-Sous Node, `LokiFsAdapter` écrit chaque sauvegarde de façon atomique (fichier temporaire, fsync,
-renommage). Pour les grosses bases, `LokiFsStructuredAdapter` écrit une collection par fichier, en
-flux, et ne réécrit que les collections modifiées ; un arrêt pendant une sauvegarde laisse l’état
-précédent lisible. Il n’y a pas de verrou : deux process qui sauvegardent la même base à tour de rôle
-la laissent lisible (la dernière sauvegarde l’emporte entièrement), et une sauvegarde pendant
-laquelle un autre écrivain valide la sienne échoue. Un
-arrêt brutal pendant une écriture peut laisser un fichier temporaire caché (`.<nom>.<pid>.<aléa>.tmp`),
-qui n’est pas supprimé automatiquement. `LokiEncryptedAdapter` chiffre (AES-256-GCM) ce que stocke
-un autre adaptateur (`LokiFsAdapter`, `LokiMemoryAdapter`…) ; il peut être placé sous un adaptateur
-partitionné, pas autour :
+- **Typed end to end**: collections, queries, events and options are typed; the code base is strict TypeScript.
+- **Promise API**: `Loki.open`, `await db.saveDatabase()`; callbacks keep working for existing code.
+- **Modern storage**: OPFS with atomic writes, native IndexedDB that only rewrites what changed, crash-safe file
+  writes in Node.js, AES-GCM encryption.
+- **Compatible with LokiJS**: same queries, indexes and Dynamic Views; databases saved by LokiJS open as they are
+  (one legacy IndexedDB adapter needs a short migration).
+- **No runtime dependencies**, ESM and CommonJS builds, tested in Node.js, Chromium, Firefox and WebKit.
 
-```ts
-import { Loki, LokiEncryptedAdapter, LokiFsAdapter } from 'loki-ts';
+## Install
 
-const adapter = new LokiEncryptedAdapter(new LokiFsAdapter(), { secret: process.env.DB_SECRET! });
-const db = await Loki.open('app.db', { adapter });
+```sh
+pnpm add @lokits/core   # or npm install @lokits/core
 ```
 
-Le chiffrement authentifie chaque fichier, pas la base dans son ensemble : quelqu’un qui peut écrire
-sur le disque peut remettre une ancienne copie d’un fichier ou échanger deux partitions sans que le
-déchiffrement échoue.
+## Persistence
 
-Les bases partitionnées et `fs-structured` sont converties au format à générations, et les bases
-chiffrées en AES-GCM, à leur première sauvegarde : LokiJS ne peut plus les lire ensuite. Faites une
-copie avant d’ouvrir une base existante, ou passez `generations: false` pour garder le format
-partitionné d’origine, avec sa fragilité : un arrêt pendant une sauvegarde peut alors désynchroniser
-la base.
+Pick an adapter for your environment, or none to keep the database in memory. Without an adapter, LokiTS uses
+the file system in Node.js and localStorage in the browser.
 
-Dans le navigateur, localStorage reste le défaut (environ 5 Mo). Pour une vraie base, choisir
-`LokiIndexedDBAdapter` (ne réécrit que les paquets de documents modifiés, relit les bases de
-l’adaptateur incrémental de lokijs) ou `LokiOpfsAdapter` (Origin Private File System, un fichier
-par base ; sous `LokiPartitioningAdapter`, un fichier par collection) :
+| Adapter | Environment | Use it for |
+|---|---|---|
+| `LokiFsAdapter` (default in Node.js) | Node.js | One file per database, written atomically |
+| `LokiFsStructuredAdapter` | Node.js | Large databases: one file per collection, streamed, only changed collections rewritten |
+| `LokiOpfsAdapter` | Browser, Worker | Origin private file system, files replaced atomically |
+| `LokiIndexedDBAdapter` | Browser | IndexedDB, only the changed chunks rewritten |
+| `LokiLocalStorageAdapter` (default in the browser) | Browser | Small databases (about 5 MB) |
+| `LokiPartitioningAdapter` | Anywhere | One key per collection on top of another adapter |
+| `LokiEncryptedAdapter` | Anywhere | AES-256-GCM encryption on top of another adapter |
+| `LokiMemoryAdapter` | Anywhere | Tests |
 
 ```ts
-import { Loki, LokiIndexedDBAdapter, LokiOpfsAdapter, LokiPartitioningAdapter } from 'loki-ts';
+import { Loki, LokiIndexedDBAdapter, LokiOpfsAdapter, LokiPartitioningAdapter } from '@lokits/core';
 
 const adapter = (await LokiOpfsAdapter.isSupported())
   ? new LokiPartitioningAdapter(new LokiOpfsAdapter({ directory: 'my-app' }))
@@ -88,36 +58,63 @@ const adapter = (await LokiOpfsAdapter.isSupported())
 const db = await Loki.open('app.db', { adapter });
 ```
 
-Le navigateur peut effacer ce stockage quand l’espace manque : `navigator.storage.persist()` le
-demande persistant. Les bases de l’ancien `LokiIndexedAdapter` de lokijs se migrent avec la recette
-du [tutoriel](tutorials/Persistence%20Adapters.md).
+```ts
+import { Loki, LokiEncryptedAdapter, LokiFsAdapter } from '@lokits/core';
 
-## Modernisation prévue
+const adapter = new LokiEncryptedAdapter(new LokiFsAdapter(), { secret: process.env.DB_SECRET! });
+const db = await Loki.open('app.db', { adapter });
+```
 
-- Outillage moderne avec pnpm, Biome, Vitest et tsup
-- Migration progressive vers TypeScript strict et découpage en modules
-- API typée pour le cœur, les requêtes, les index et les événements
-- Adaptateurs modernes pour FS, IndexedDB, OPFS et mémoire
-- Persistance basée sur `Promise`/`async` et évaluation du support Web Worker
-- Benchmarks reproductibles et CI multi-version/multi-plateforme
-- Documentation moderne avec VitePress ou Starlight et TypeDoc
-- Publication ESM/CommonJS après validation de la compatibilité
+Browsers may evict this storage when space runs low: call `navigator.storage.persist()` to ask for persistent
+storage. Writing your own adapter takes a few lines; see the
+[Persistence Adapters](tutorials/Persistence%20Adapters.md) tutorial, which has recipes for an HTTP server, AWS
+S3 and NativeScript.
 
-Les changements de comportement ou de compatibilité seront documentés dans le
-changelog et accompagnés de tests.
+## Features
 
-## Upstream et attribution
+- MongoDB-style queries (`$eq`, `$gt`, `$in`, `$regex`, `$and`, `$or`…) and chainable result sets with sorting,
+  joins, map and reduce ([Query Examples](tutorials/Query%20Examples.md))
+- Unique, exact and adaptive binary indexes ([Indexing and Query performance](tutorials/Indexing%20and%20Query%20performance.md))
+- Dynamic Views: live, incrementally updated subsets of a collection
+- Named, parameterized transforms ([Collection Transforms](tutorials/Collection%20Transforms.md))
+- Changes API to track inserts, updates and removals ([Changes API](tutorials/Changes%20API.md))
+- Document TTL, autosave, autoload and throttled saves
 
-Ce dépôt conserve l’historique et le code de LokiJS. Le projet original est
-développé par TechFort/Joe Minichino, avec les contributions de ses
-contributeurs. Voir [LICENSE.txt](LICENSE.txt) pour les conditions de licence et
-[CHANGELOG.md](CHANGELOG.md) pour l’historique hérité.
+## Coming from LokiJS
 
-LokiJS et les marques associées restent l’héritage du projet original. LokiTS
-est un nom de projet distinct et ne doit pas être présenté comme une version
-officielle ou soutenue par TechFort.
+Replace `lokijs` with `@lokits/core` and update your imports; the API is the same, and callbacks still work.
+The [changelog](CHANGELOG.md) lists the breaking changes and the migration steps. Back up partitioned,
+fs-structured and encrypted databases before their first save with LokiTS: they switch to a crash-safe format
+that LokiJS cannot read.
 
-## Licence
+## Compatibility
 
-LokiTS est distribué sous licence MIT. Le texte complet et l’attribution
-originale sont conservés dans [LICENSE.txt](LICENSE.txt).
+- Node.js 20.16 or later
+- Browsers with ES2022 support; tested in Chromium, Firefox and WebKit
+
+## Status
+
+LokiTS is approaching 1.0. Coming next: published benchmarks against LokiJS and other in-browser databases, and a
+documentation site.
+
+## Development
+
+```sh
+pnpm install         # Node.js 22.12 or later
+pnpm test            # unit tests (Vitest)
+pnpm test:browser    # tests in Chromium, Firefox and WebKit (Playwright)
+pnpm check           # lint and format (Biome)
+pnpm typecheck
+pnpm build           # dist/: ESM, CommonJS, type declarations
+```
+
+## Credits
+
+LokiTS is built on LokiJS, created by Joe Minichino ([TechFort](https://github.com/techfort/LokiJS)), with major
+contributions from Dave ([obeliskos](https://github.com/obeliskos)), Radek Pietruszewski
+([radex](https://github.com/radex)), and the LokiJS contributors, including Hans Klunder, Simon Hutchison and
+Stefano Falda. LokiTS is an independent project, not an official release of LokiJS or TechFort.
+
+## License
+
+[MIT](LICENSE.txt). Copyright (c) 2026 VRuddy; LokiJS copyright (c) 2015 TechFort.
