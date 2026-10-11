@@ -99,14 +99,6 @@ export const Utils = {
   },
 };
 
-export function localStorageAvailable(): boolean {
-  try {
-    return window && window.localStorage !== undefined && window.localStorage !== null;
-  } catch (e) {
-    return false;
-  }
-}
-
 /**
  * General utils, including statistical functions
  */

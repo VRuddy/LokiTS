@@ -1,51 +1,58 @@
 // Ported from LokiJS (lokijs.js), MIT. Original author: Joe Minichino and LokiJS contributors.
-import { localStorageAvailable } from '../utils/helpers';
+import { withAdapterCallback } from '../persistence/callbacks';
+import { adapterError, translateDomError } from './errors';
 
-/**
- * A loki persistence adapter which persists to web browser's local storage object
- */
+function storage(): Storage {
+  let store: Storage | undefined;
+  try {
+    store = (globalThis as { window?: { localStorage?: Storage } }).window?.localStorage;
+  } catch (err) {
+    // reading window.localStorage throws when the browser blocks site data
+    throw adapterError('ENOTSUP', 'localStorage is not available', err);
+  }
+  if (!store) {
+    throw adapterError('ENOTSUP', 'localStorage is not available');
+  }
+  return store;
+}
+
+const attempt = <T>(fn: () => T): Promise<T> => new Promise((resolve) => resolve(fn()));
+
+/** Persists each database as one localStorage item (about 5 MB per origin). */
 export class LokiLocalStorageAdapter {
-  /**
-   * loadDatabase() - Load data from localstorage
-   * @param dbname - the name of the database to load
-   * @param callback - the callback to handle the result
-   */
-  loadDatabase(dbname: string, callback: (result: any) => void): void {
-    if (localStorageAvailable()) {
-      callback(localStorage.getItem(dbname));
-    } else {
-      callback(new Error('localStorage is not available'));
-    }
+  loadDatabase(dbname: string, callback?: (result: any) => void): Promise<string | null> {
+    return withAdapterCallback(
+      attempt(() => storage().getItem(dbname)),
+      callback,
+      'load',
+    ) as Promise<string | null>;
   }
 
-  /**
-   * saveDatabase() - save data to localstorage, will throw an error if the file can't be saved
-   * might want to expand this to avoid dataloss on partial save
-   * @param dbname - the filename of the database to load
-   * @param dbstring - serialized database
-   * @param callback - the callback to handle the result
-   */
-  saveDatabase(dbname: string, dbstring: string, callback: (err: any) => void): void {
-    if (localStorageAvailable()) {
-      localStorage.setItem(dbname, dbstring);
-      callback(null);
-    } else {
-      callback(new Error('localStorage is not available'));
-    }
+  saveDatabase(dbname: string, dbstring: string, callback?: (err?: any) => void): Promise<void> {
+    const save = attempt(() => {
+      const store = storage();
+      try {
+        store.setItem(dbname, dbstring);
+      } catch (err) {
+        const translated = translateDomError(err, `saving ${dbname} to localStorage`);
+        if ((translated as { code?: string }).code === 'EQUOTA') {
+          throw adapterError(
+            'EQUOTA',
+            `localStorage is full while saving ${dbname}: use LokiIndexedDBAdapter or LokiOpfsAdapter for larger databases`,
+            err,
+          );
+        }
+        throw translated;
+      }
+    });
+    return withAdapterCallback(save, callback, 'write') as Promise<void>;
   }
 
-  /**
-   * deleteDatabase() - delete the database from localstorage, will throw an error if it
-   * can't be deleted
-   * @param dbname - the filename of the database to delete
-   * @param callback - the callback to handle the result
-   */
-  deleteDatabase(dbname: string, callback: (err: any) => void): void {
-    if (localStorageAvailable()) {
-      localStorage.removeItem(dbname);
-      callback(null);
-    } else {
-      callback(new Error('localStorage is not available'));
-    }
+  deleteDatabase(dbname: string, callback?: (err?: any) => void): Promise<void> {
+    return withAdapterCallback(
+      attempt(() => storage().removeItem(dbname)),
+      callback,
+      'write',
+    ) as Promise<void>;
   }
 }
