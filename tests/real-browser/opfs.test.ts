@@ -9,6 +9,8 @@ afterEach(async () => {
 });
 
 async function* failingLines() {
+  // more than one write chunk, so bytes reach the writable before the failure
+  yield 'x'.repeat(300_000);
   yield '{"a":1}';
   throw new Error('source failed');
 }
