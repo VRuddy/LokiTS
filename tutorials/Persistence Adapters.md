@@ -186,19 +186,7 @@ async function migrateFromLokiIndexedAdapter(name: string): Promise<Loki> {
 
 `'loki'` is the default 'App' context of `LokiIndexedAdapter`: pass the one your application used. A database that was saved through `LokiPartitioningAdapter` is read with `new LokiPartitioningAdapter(legacy)` in place of `legacy` ; `old.deleteDatabase()` then removes the partitions too.
 
-# Description of LokiNativescriptAdapter
-This adapter can be used when developing a nativescript application for iOS or Android, it persists the loki db to the filesystem using the native platform api.
-
-### Simple Example of using LokiNativescriptAdapter :
-```javascript
-const loki = require ('lokijs');
-const LokiNativescriptAdapter = require('lokijs/src/loki-nativescript-adapter');
-let db = new loki('loki.json',{
-            adapter:new LokiNativescriptAdapter()
-});
-```
-
-> In addition to the above adapters which are included in the lokijs distro, several community members have also created their own adapters using this adapter interface.  Some of these include : 
+> Community members have also written adapters for this interface (callback style, they still work). Some of these include : 
 * Cordova adapter : https://github.com/cosmith/loki-cordova-fs-adapter
 * localForage adapter : https://github.com/paulhovey/loki-localforage-adapter
 
@@ -281,6 +269,142 @@ var db = new loki('test.db', { throttledSaves: false });
 
 # Creating your own Loki Persistence Adapters
 Lokijs currently supports two types of database adapters : 'basic', and 'reference' mode adapters. Basic adapters are passed a string to save and return a string when loaded... this is well suited to key/value stores.  Reference mode adapters are passed a reference to the database itself where it can save however it wishes to.  When loading, reference mode adapters can return an object reference or serialized string.  Below we will describe the minimal functionality which lokijs requires, you may want to provide additional adapter functionality for deleting or inspecting its persistence store.
+
+# Writing your own adapter
+An adapter is an object with `loadDatabase(dbname)`, which resolves to the saved string or to `null` when the database does not exist yet, and `saveDatabase(dbname, data)`; `deleteDatabase(dbname)` is optional. A rejected promise is reported by `loadDatabase()`/`saveDatabase()` on the database. The three recipes below replace adapters that lokijs shipped in `src/` and LokiTS no longer carries; they are tested in `tests/adapters/recipes.test.ts`.
+
+### HTTP server (replaces jquery-sync-adapter.js by Joe Minichino)
+The server stores the body of a `PUT`, returns it on `GET` and answers 404 when it has nothing.
+```typescript
+import type { LokiAdapter } from 'loki-ts';
+
+class HttpAdapter implements LokiAdapter {
+  readonly #baseUrl: string;
+
+  constructor(baseUrl: string) {
+    this.#baseUrl = baseUrl;
+  }
+
+  async loadDatabase(dbname: string): Promise<string | null> {
+    const response = await fetch(this.#url(dbname));
+    if (response.status === 404) {
+      return null;
+    }
+    if (!response.ok) {
+      throw new Error(`loading ${dbname}: HTTP ${response.status}`);
+    }
+    return response.text();
+  }
+
+  async saveDatabase(dbname: string, data: string): Promise<void> {
+    const response = await fetch(this.#url(dbname), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: data,
+    });
+    if (!response.ok) {
+      throw new Error(`saving ${dbname}: HTTP ${response.status}`);
+    }
+  }
+
+  async deleteDatabase(dbname: string): Promise<void> {
+    const response = await fetch(this.#url(dbname), { method: 'DELETE' });
+    if (!response.ok && response.status !== 404) {
+      throw new Error(`deleting ${dbname}: HTTP ${response.status}`);
+    }
+  }
+
+  #url(dbname: string): string {
+    return `${this.#baseUrl}/${encodeURIComponent(dbname)}`;
+  }
+}
+
+const db = await Loki.open('app.db', { adapter: new HttpAdapter('https://example.com/db') });
+```
+
+### AWS S3 (replaces aws-s3-sync-adapter.js by Simon Hutchison)
+Uses the AWS SDK v3; pass a configured client (credentials come from the SDK's usual configuration, not from the adapter). Databases saved by the lokijs adapter were stored in base64 and are still read.
+```typescript
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import type { LokiAdapter } from 'loki-ts';
+
+class S3Adapter implements LokiAdapter {
+  readonly #client: S3Client;
+  readonly #bucket: string;
+
+  constructor(client: S3Client, bucket: string) {
+    this.#client = client;
+    this.#bucket = bucket;
+  }
+
+  async loadDatabase(dbname: string): Promise<string | null> {
+    try {
+      const response = await this.#client.send(
+        new GetObjectCommand({ Bucket: this.#bucket, Key: dbname }),
+      );
+      const text = (await response.Body?.transformToString()) ?? '';
+      if (text === '') {
+        return null;
+      }
+      // the lokijs aws-s3-sync-adapter stored the database in base64
+      return text.startsWith('{') ? text : Buffer.from(text, 'base64').toString();
+    } catch (err) {
+      if ((err as Error).name === 'NoSuchKey') {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  async saveDatabase(dbname: string, data: string): Promise<void> {
+    await this.#client.send(
+      new PutObjectCommand({
+        Bucket: this.#bucket,
+        Key: dbname,
+        Body: data,
+        ContentType: 'application/json',
+      }),
+    );
+  }
+
+  async deleteDatabase(dbname: string): Promise<void> {
+    await this.#client.send(new DeleteObjectCommand({ Bucket: this.#bucket, Key: dbname }));
+  }
+}
+
+const db = await Loki.open('app.db', { adapter: new S3Adapter(new S3Client({ region: 'eu-west-1' }), 'my-bucket') });
+```
+
+### NativeScript (replaces loki-nativescript-adapter.js by Stefano Falda)
+Stores the database in the app documents folder. `writeText` replaces the file in place: a crash during a save can lose the database.
+```typescript
+import { knownFolders } from '@nativescript/core';
+import type { LokiAdapter } from 'loki-ts';
+
+class NativeScriptAdapter implements LokiAdapter {
+  async loadDatabase(dbname: string): Promise<string | null> {
+    const folder = knownFolders.documents();
+    if (!folder.contains(dbname)) {
+      return null;
+    }
+    const text = await folder.getFile(dbname).readText();
+    return text === '' ? null : text;
+  }
+
+  async saveDatabase(dbname: string, data: string): Promise<void> {
+    await knownFolders.documents().getFile(dbname).writeText(data);
+  }
+
+  async deleteDatabase(dbname: string): Promise<void> {
+    const folder = knownFolders.documents();
+    if (folder.contains(dbname)) {
+      await folder.getFile(dbname).remove();
+    }
+  }
+}
+
+const db = await Loki.open('app.db', { adapter: new NativeScriptAdapter() });
+```
 
 # Creating your own 'Basic' persistence adapter 
 
