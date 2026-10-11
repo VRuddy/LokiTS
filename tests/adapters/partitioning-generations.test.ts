@@ -680,4 +680,67 @@ describe('LokiPartitioningAdapter line streams', () => {
     expect(inner.streamedReads).toBe(1);
     expect(reopened.getCollection('a')?.count()).toBe(50);
   });
+
+  it('reads what a plain adapter wrote, and the other way round', async () => {
+    const lines = new LineMemoryAdapter();
+    const streamed = new Loki('s.db', { adapter: new LokiPartitioningAdapter(lines) });
+    streamed.addCollection('a').insert(Array.from({ length: 20 }, (_, x) => ({ x })));
+    await streamed.saveDatabase();
+    const plain = new LokiMemoryAdapter();
+    plain.hashStore = lines.hashStore;
+    const fromPlain = await Loki.open('s.db', { adapter: new LokiPartitioningAdapter(plain) });
+    expect(fromPlain.getCollection('a')?.count()).toBe(20);
+
+    const other = new LokiMemoryAdapter();
+    const paged = new Loki('p.db', {
+      adapter: new LokiPartitioningAdapter(other, { paging: true, pageSize: 10 }),
+    });
+    paged.addCollection('a').insert(Array.from({ length: 30 }, (_, x) => ({ x })));
+    await paged.saveDatabase();
+    expect(
+      JSON.parse(other.hashStore['p.db'].value).lokiPartitions.collections[0].files.length,
+    ).toBeGreaterThan(1);
+    const reader = new LineMemoryAdapter();
+    reader.hashStore = other.hashStore;
+    const fromLines = await Loki.open('p.db', { adapter: new LokiPartitioningAdapter(reader) });
+    expect(fromLines.getCollection('a')?.count()).toBe(30);
+    expect(reader.streamedReads).toBeGreaterThan(1);
+  });
+
+  it('reports a streamed file that is missing', async () => {
+    const inner = new LineMemoryAdapter();
+    const db = new Loki('s.db', { adapter: new LokiPartitioningAdapter(inner) });
+    db.addCollection('a').insert({ x: 1 });
+    await db.saveDatabase();
+    const [file] = JSON.parse(inner.hashStore['s.db'].value).lokiPartitions.collections[0].files;
+    delete inner.hashStore[`s.db.${file}`];
+
+    await expect(
+      Loki.open('s.db', { adapter: new LokiPartitioningAdapter(inner) }),
+    ).rejects.toThrow(/is missing/);
+  });
+
+  it('round-trips an empty collection through the stream', async () => {
+    const inner = new LineMemoryAdapter();
+    const db = new Loki('s.db', { adapter: new LokiPartitioningAdapter(inner) });
+    db.addCollection('a');
+    await db.saveDatabase();
+
+    const reopened = await Loki.open('s.db', { adapter: new LokiPartitioningAdapter(inner) });
+    expect(inner.streamedReads).toBe(1);
+    expect(reopened.getCollection('a')?.count()).toBe(0);
+  });
+
+  it('keeps line breaks, quotes and unicode in documents', async () => {
+    const inner = new LineMemoryAdapter();
+    const db = new Loki('s.db', { adapter: new LokiPartitioningAdapter(inner) });
+    db.addCollection('a').insert({ text: 'a\nb', quoted: 'say "hi"', accent: 'é' });
+    await db.saveDatabase();
+
+    const reopened = await Loki.open('s.db', { adapter: new LokiPartitioningAdapter(inner) });
+    const doc = reopened.getCollection('a')?.find()[0];
+    expect(doc?.text).toBe('a\nb');
+    expect(doc?.quoted).toBe('say "hi"');
+    expect(doc?.accent).toBe('é');
+  });
 });

@@ -63,9 +63,10 @@ export async function readCollection(
   files: string[],
 ): Promise<any[]> {
   const docs: any[] = [];
+  const streamed = isLineStream(inner);
   for (const file of files) {
     const key = fileKey(dbname, file);
-    if (isLineStream(inner)) {
+    if (streamed) {
       const lines = await inner.readLines(key);
       if (lines === null) {
         throw missingFile(key);
