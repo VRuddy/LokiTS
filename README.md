@@ -49,8 +49,13 @@ Les méthodes de persistance renvoient des Promises et acceptent toujours leur c
 Sous Node, `LokiFsAdapter` écrit chaque sauvegarde de façon atomique (fichier temporaire, fsync,
 renommage). Pour les grosses bases, `LokiFsStructuredAdapter` écrit une collection par fichier, en
 flux, et ne réécrit que les collections modifiées ; un arrêt pendant une sauvegarde laisse l’état
-précédent lisible. `LokiEncryptedAdapter` chiffre (AES-256-GCM) ce que stocke un autre adaptateur
-(`LokiFsAdapter`, `LokiMemoryAdapter`… mais pas un adaptateur partitionné) :
+précédent lisible. Il n’y a pas de verrou : deux process qui sauvegardent la même base à tour de rôle
+la laissent lisible (la dernière sauvegarde l’emporte entièrement), et une sauvegarde pendant
+laquelle un autre écrivain valide la sienne échoue. Un
+arrêt brutal pendant une écriture peut laisser un fichier temporaire caché (`.<nom>.<pid>.<aléa>.tmp`),
+qui n’est pas supprimé automatiquement. `LokiEncryptedAdapter` chiffre (AES-256-GCM) ce que stocke
+un autre adaptateur (`LokiFsAdapter`, `LokiMemoryAdapter`…) ; il peut être placé sous un adaptateur
+partitionné, pas autour :
 
 ```ts
 import { Loki, LokiEncryptedAdapter, LokiFsAdapter } from 'loki-ts';
@@ -59,10 +64,15 @@ const adapter = new LokiEncryptedAdapter(new LokiFsAdapter(), { secret: process.
 const db = await Loki.open('app.db', { adapter });
 ```
 
+Le chiffrement authentifie chaque fichier, pas la base dans son ensemble : quelqu’un qui peut écrire
+sur le disque peut remettre une ancienne copie d’un fichier ou échanger deux partitions sans que le
+déchiffrement échoue.
+
 Les bases partitionnées et `fs-structured` sont converties au format à générations, et les bases
 chiffrées en AES-GCM, à leur première sauvegarde : LokiJS ne peut plus les lire ensuite. Faites une
 copie avant d’ouvrir une base existante, ou passez `generations: false` pour garder le format
-partitionné d’origine.
+partitionné d’origine, avec sa fragilité : un arrêt pendant une sauvegarde peut alors désynchroniser
+la base.
 
 ## Modernisation prévue
 
