@@ -1,6 +1,7 @@
 // Smoke test du build publié (dist/), exécutable sur Node 20+ sans Vitest :
 //   pnpm build && node --test dist-tests/smoke.test.mjs
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -75,5 +76,15 @@ test('le build n’embarque plus l’ancien adaptateur IndexedDB', () => {
   for (const file of ['../dist/index.js', '../dist/index.cjs']) {
     const code = readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8');
     assert.equal(code.includes('LokiCatalog'), false, file);
+  }
+});
+
+test('les déclarations se compilent sans la lib DOM (projet Node, skipLibCheck: false)', () => {
+  const tsc = require.resolve('typescript/bin/tsc');
+  const project = fileURLToPath(new URL('./no-dom/tsconfig.json', import.meta.url));
+  try {
+    execFileSync(process.execPath, [tsc, '-p', project], { encoding: 'utf8', stdio: 'pipe' });
+  } catch (err) {
+    assert.fail(`${err.stdout}${err.stderr}`);
   }
 });

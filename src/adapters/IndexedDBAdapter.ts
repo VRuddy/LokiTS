@@ -15,7 +15,12 @@ import { indexedDBFactory, onRequest, openDatabase, readAllChunks } from './inde
 
 export interface LokiIndexedDBAdapterOptions {
   /** Another connection changed the database (most likely deleted it from another tab). */
-  onversionchange?: (event: IDBVersionChangeEvent) => void;
+  // structural so that the declarations do not need the DOM lib; method syntax keeps accepting
+  // handlers typed with IDBVersionChangeEvent
+  onversionchange?(event: {
+    readonly oldVersion: number;
+    readonly newVersion: number | null;
+  }): void;
   /** Called once the read has started: code can run while IndexedDB fetches. */
   onFetchStart?: () => void;
   /** Called after a save had to overwrite changes written by another tab. */
