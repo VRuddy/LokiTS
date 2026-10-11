@@ -24,3 +24,4 @@ CLAUDE.md
 dist
 docs/
 .superpowers/
+.vitest/
