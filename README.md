@@ -46,6 +46,24 @@ await db.saveDatabase();
 
 Les méthodes de persistance renvoient des Promises et acceptent toujours leur callback d’origine.
 
+Sous Node, `LokiFsAdapter` écrit chaque sauvegarde de façon atomique (fichier temporaire, fsync,
+renommage). Pour les grosses bases, `LokiFsStructuredAdapter` écrit une collection par fichier, en
+flux, et ne réécrit que les collections modifiées ; un arrêt pendant une sauvegarde laisse l’état
+précédent lisible. `LokiEncryptedAdapter` chiffre (AES-256-GCM) ce que stocke un autre adaptateur
+(`LokiFsAdapter`, `LokiMemoryAdapter`… mais pas un adaptateur partitionné) :
+
+```ts
+import { Loki, LokiEncryptedAdapter, LokiFsAdapter } from 'loki-ts';
+
+const adapter = new LokiEncryptedAdapter(new LokiFsAdapter(), { secret: process.env.DB_SECRET! });
+const db = await Loki.open('app.db', { adapter });
+```
+
+Les bases partitionnées et `fs-structured` sont converties au format à générations, et les bases
+chiffrées en AES-GCM, à leur première sauvegarde : LokiJS ne peut plus les lire ensuite. Faites une
+copie avant d’ouvrir une base existante, ou passez `generations: false` pour garder le format
+partitionné d’origine.
+
 ## Modernisation prévue
 
 - Outillage moderne avec pnpm, Biome, Vitest et tsup
