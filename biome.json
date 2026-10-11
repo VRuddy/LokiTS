@@ -8,7 +8,6 @@
   "files": {
     "includes": [
       "**",
-      "!**/src/**/*.js",
       "!build",
       "!docs",
       "!demos",
