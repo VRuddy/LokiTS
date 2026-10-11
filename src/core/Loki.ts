@@ -1027,17 +1027,23 @@ export class Loki extends LokiEventEmitter<LokiEvents> {
           throw new Error(`this collection cannot be loaded lazily: ${coll.name}`);
         }
         copyColl.getData = coll.getData;
+        const materialize = (target: { getData: (() => unknown) | null }, data: unknown) => {
+          target.getData = null;
+          Object.defineProperty(target, 'data', {
+            value: data,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+          });
+        };
         Object.defineProperty(copyColl, 'data', {
           get: function (this: { getData: (() => unknown) | null }) {
             const data = this.getData?.();
-            this.getData = null;
-            Object.defineProperty(this, 'data', {
-              value: data,
-              writable: true,
-              enumerable: true,
-              configurable: true,
-            });
+            materialize(this, data);
             return data;
+          },
+          set: function (this: { getData: (() => unknown) | null }, data: unknown) {
+            materialize(this, data);
           },
         });
       } else {

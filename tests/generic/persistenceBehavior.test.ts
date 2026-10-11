@@ -182,6 +182,30 @@ describe('loading', () => {
     expect(users.data.map((doc: { n: number }) => doc.n)).toEqual([1]);
     expect(JSON.parse(db.serialize()).collections[0].data).toHaveLength(1);
   });
+
+  it('clears a collection loaded through getData before its data is read', () => {
+    const source = new loki('behavior.db');
+    source.addCollection('users').insert([{ n: 1 }, { n: 2 }]);
+    const dbObject = JSON.parse(source.serialize());
+    const docs = dbObject.collections[0].data;
+    dbObject.collections[0].data = [];
+    let reads = 0;
+    dbObject.collections[0].getData = () => {
+      reads++;
+      return docs;
+    };
+
+    const db = new loki('behavior.db');
+    db.loadJSONObject(dbObject);
+    const users = db.getCollection('users');
+    users.clear();
+
+    expect(users.count()).toBe(0);
+    expect(reads).toBe(0);
+    users.insert({ n: 3 });
+    expect(users.data.map((doc: { n: number }) => doc.n)).toEqual([3]);
+    expect(JSON.parse(db.serialize()).collections[0].data).toHaveLength(1);
+  });
 });
 
 describe('deleting', () => {
