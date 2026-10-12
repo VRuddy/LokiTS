@@ -52,7 +52,7 @@ const LIMITS = `## Limits
 - Durability differs between engines (see Engines): a faster write may give fewer guarantees.
 - SQLite WASM persistence runs in a Worker (OPFS SAH pool VFS), the other browser engines on the main thread.
 - RxDB is measured in memory only: its fast persistent storages are not free.
-- RxDB caches query results; \`city\` has only 50 values, so repeated city queries may be answered from its cache.
+- RxDB caches query results while the data does not change: \`sort-limit\` (always the same query) and the city queries (50 values) are mostly answered from that cache.
 - Numbers depend on the machine; compare ratios, not absolute times.`;
 
 function runLine(run: RunFile): string {

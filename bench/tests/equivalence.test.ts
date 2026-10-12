@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { cloneDocs, generateDocs, makeParams } from '../src/core/data.ts';
 import type { MemoryEngine } from '../src/core/engine.ts';
+import { sqliteNode } from '../src/engines/node/sqlite.ts';
+import { lokidb } from '../src/engines/shared/lokidb.ts';
 import { lokijs } from '../src/engines/shared/lokijs.ts';
 import { lokits } from '../src/engines/shared/lokits.ts';
+import { rxdbMemory } from '../src/engines/shared/rxdb.ts';
+import { tinybase } from '../src/engines/shared/tinybase.ts';
 
-const ENGINES: MemoryEngine[] = [lokits, lokijs];
+const ENGINES: MemoryEngine[] = [lokits, lokijs, lokidb, tinybase, rxdbMemory, sqliteNode];
 const docs = generateDocs(300);
 const p = makeParams(docs);
 const sorted = (ids: number[]) => [...ids].sort((a, b) => a - b);
