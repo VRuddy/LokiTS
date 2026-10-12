@@ -61,8 +61,8 @@
     "test:watch": "vitest",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:coverage": "vitest run --coverage",
-    "bench": "node benchmark/benchmark.js",
-    "bench:fs": "node benchmark/benchmark_fs.js",
+    "bench": "node --expose-gc --disable-warning=ExperimentalWarning bench/src/node.ts",
+    "bench:report": "node bench/src/report.ts",
     "bench:browser": "vitest run --config vitest.browser-bench.config.ts",
     "test:dist": "node --test dist-tests/smoke.test.mjs"
   },
