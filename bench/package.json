@@ -1,0 +1,21 @@
+{
+  "name": "@lokits/bench",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "@lokidb/fs-storage": "2.1.0",
+    "@lokidb/indexed-storage": "2.1.0",
+    "@lokidb/loki": "2.1.0",
+    "@lokits/core": "workspace:*",
+    "@sqlite.org/sqlite-wasm": "3.53.4-build2",
+    "dexie": "4.4.6",
+    "lokijs": "1.5.12",
+    "mitata": "1.0.34",
+    "rxdb": "17.6.0",
+    "rxjs": "7.8.2",
+    "tinybase": "10.0.1"
+  }
+}

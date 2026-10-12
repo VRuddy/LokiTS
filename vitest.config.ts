@@ -1,8 +1,13 @@
+import { fileURLToPath } from 'node:url';
 import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  resolve: {
+    // the bench tests check engine logic, not speed: they run on src/ and need no build
+    alias: { '@lokits/core': fileURLToPath(new URL('./src/index.ts', import.meta.url)) },
+  },
   test: {
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.ts', 'bench/tests/**/*.test.ts'],
     // tests/real-browser needs real browsers: run them with `pnpm test:browser`
     exclude: [...configDefaults.exclude, 'tests/real-browser/**'],
     // Les specs de persistance écrivent des fichiers dans le cwd :

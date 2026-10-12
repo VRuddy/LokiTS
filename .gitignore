@@ -8,3 +8,4 @@ dist
 docs/
 .superpowers/
 .vitest/
+bench/.tmp/
