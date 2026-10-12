@@ -2,7 +2,6 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "allowImportingTsExtensions": true,
-    "erasableSyntaxOnly": true,
     "types": ["node"],
     "paths": { "@lokits/core": ["../src/index.ts"] }
   },
