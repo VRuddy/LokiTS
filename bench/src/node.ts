@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { crashRows } from './core/crash.ts';
+import { QUERY_SCENARIOS } from './core/memory-scenarios.ts';
 import type { ChildOutput, EngineMeta, Family, ResultRow, RunFile } from './core/results.ts';
 import { gitCommit, machineInfo, packageVersions } from './machine.ts';
 import { NODE_MEMORY_ENGINES, NODE_PERSISTENT_ENGINES } from './registry/node.ts';
@@ -21,24 +23,46 @@ export interface NodeRunOptions {
   rounds?: number;
 }
 
+// Scenarios with a signature are checked against the reference; a missing signature fails closed.
 export function flagMismatches(outputs: Map<string, ChildOutput>, reference: string): void {
-  const expected = outputs.get(reference)?.signatures ?? {};
+  const expected = outputs.get(reference)?.signatures;
+  const checked = new Set(
+    QUERY_SCENARIOS.filter((s) => s.name !== 'update-one').map((s) => s.name),
+  );
   for (const [name, output] of outputs) {
     if (name === reference) {
       continue;
     }
     for (const row of output.rows) {
+      if (row.error !== undefined || !checked.has(row.scenario)) {
+        continue;
+      }
       const key = `${row.scenario}@${row.size}`;
-      const differs =
-        key in expected && key in output.signatures && output.signatures[key] !== expected[key];
-      if (row.error === undefined && differs) {
-        row.error = 'result differs from LokiTS';
-        row.median = Number.NaN;
-        row.p75 = Number.NaN;
-        row.p99 = Number.NaN;
+      const mine = output.signatures[key];
+      if (expected?.[key] === undefined || mine === undefined) {
+        markError(row, 'result not verified');
+      } else if (mine !== expected[key]) {
+        markError(row, 'result differs from LokiTS');
       }
     }
   }
+}
+
+function markError(row: ResultRow, error: string): void {
+  row.error = error;
+  row.median = Number.NaN;
+  row.p75 = Number.NaN;
+  row.p99 = Number.NaN;
+}
+
+export function crashMessage(stderr: string, status: number | null): string {
+  const lines = stderr
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('Node.js v'));
+  return (
+    lines.find((line) => /^\w*Error\b|error:/.test(line)) ?? lines.at(-1) ?? `exit code ${status}`
+  );
 }
 
 function runChild(engine: string, opts: NodeRunOptions, dir: string): ChildOutput {
@@ -63,24 +87,16 @@ function runChild(engine: string, opts: NodeRunOptions, dir: string): ChildOutpu
     encoding: 'utf8',
   });
   if (result.status !== 0) {
-    const message = result.stderr.trim().split('\n').at(-1) ?? `exit code ${result.status}`;
     return {
       engine: { name: engine, packageName: engine, notes: '' },
       signatures: {},
-      rows: [
-        {
-          family: opts.family,
-          scenario: '*',
-          size: opts.sizes[0],
-          engine,
-          env: 'node',
-          median: Number.NaN,
-          p75: Number.NaN,
-          p99: Number.NaN,
-          samples: 0,
-          error: `crashed: ${message}`,
-        },
-      ],
+      rows: crashRows(
+        opts.family,
+        engine,
+        'node',
+        opts.sizes,
+        crashMessage(result.stderr, result.status),
+      ),
     };
   }
   return JSON.parse(readFileSync(out, 'utf8')) as ChildOutput;
@@ -122,7 +138,7 @@ export async function runNodeEngines(
   for (const [engine, list] of rounds) {
     outputs.set(engine, combineRounds(list));
   }
-  if (opts.family === 'memory' && outputs.has('lokits')) {
+  if (opts.family === 'memory') {
     flagMismatches(outputs, 'lokits');
   }
   return {

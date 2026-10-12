@@ -38,6 +38,10 @@ describe('quick guard', () => {
     ]);
   });
 
+  it('fails for a baseline scenario that produced no ratio', () => {
+    expect(checkRatios({}, { 'write-all': 3 }, 1.3)).toEqual(['write-all: no result']);
+  });
+
   it('ignores scenarios missing from the baseline', () => {
     expect(checkRatios({ 'sort-limit': 9 }, {}, 1.15)).toEqual([]);
   });

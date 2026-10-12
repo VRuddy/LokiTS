@@ -13,22 +13,21 @@ const families = (env.VITE_BENCH_FAMILY ?? 'memory,persistence').split(',');
 export function benchEngine(family: Family, name: string): void {
   test.skipIf(!families.includes(family))(`${family} ${name}`, async () => {
     const browser = server.browser;
-    let output: ChildOutput;
-    if (family === 'memory') {
-      const engine = await BROWSER_MEMORY_ENGINES[name]();
-      output = await runMemory(engine, { sizes, env: browser, quick });
-    } else {
-      const engine = await BROWSER_PERSISTENT_ENGINES[name]();
-      output = await runPersistence(engine, {
-        sizes,
-        env: browser,
-        quick,
-        location: (size) => `lokits-bench-${name}-${size}`,
-      });
+    const file = `bench/.tmp/browser/${browser}-${family}-${name}.json`;
+    let output: ChildOutput | { crashed: string };
+    try {
+      output =
+        family === 'memory'
+          ? await runMemory(await BROWSER_MEMORY_ENGINES[name](), { sizes, env: browser, quick })
+          : await runPersistence(await BROWSER_PERSISTENT_ENGINES[name](), {
+              sizes,
+              env: browser,
+              quick,
+              location: (size) => `lokits-bench-${name}-${size}`,
+            });
+    } catch (error) {
+      output = { crashed: error instanceof Error ? error.message : String(error) };
     }
-    await commands.writeFile(
-      `bench/.tmp/browser/${browser}-${family}-${name}.json`,
-      JSON.stringify({ ...output, userAgent: navigator.userAgent }),
-    );
+    await commands.writeFile(file, JSON.stringify({ ...output, userAgent: navigator.userAgent }));
   });
 }

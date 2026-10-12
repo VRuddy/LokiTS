@@ -6,6 +6,8 @@ export const WEBKIT_PROFILE = fileURLToPath(
   new URL('../node_modules/.cache/lokits-bench-webkit', import.meta.url),
 );
 
+export const BROWSERS = ['chromium', 'firefox', 'webkit'];
+
 export default defineConfig({
   resolve: {
     alias: {

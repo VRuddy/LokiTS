@@ -18,21 +18,39 @@ export function formatDuration(ms: number): string {
   return `${Number((ms / 1000).toPrecision(3))} s`;
 }
 
-const label = (row: ResultRow) => (row.storage ? `${row.engine} (${row.storage})` : row.engine);
+const CACHE_MARK = ' †';
+const CACHE_NOTE =
+  '† RxDB may answer repeated queries from its query cache while the data does not change (see Limits).';
+
+// RxDB keeps the results of identical queries, so its in-memory query rows can measure a cache hit
+const cached = (row: ResultRow) => row.engine === 'RxDB' && row.family === 'memory';
+
+function label(row: ResultRow): string {
+  const name = row.storage ? `${row.engine} (${row.storage})` : row.engine;
+  return cached(row) ? `${name}${CACHE_MARK}` : name;
+}
+
+function formatRatio(ratio: number): string {
+  return `×${ratio >= 0.01 ? ratio.toFixed(2) : Number(ratio.toPrecision(1))}`;
+}
 
 function table(rows: ResultRow[]): string {
   const reference = rows.find((r) => r.engine === 'LokiTS' && !r.error);
   const ok = rows.filter((r) => !r.error).sort((a, b) => a.median - b.median);
   const failed = rows.filter((r) => r.error);
-  const lines = ['| Engine | Median | p75 | p99 | vs LokiTS |', '|---|---|---|---|---|'];
+  const header = reference ? `vs ${label(reference)}` : 'vs LokiTS';
+  const lines = [`| Engine | Median | p75 | p99 | ${header} |`, '|---|---|---|---|---|'];
   for (const r of ok) {
-    const ratio = reference ? `×${(r.median / reference.median).toFixed(2)}` : '';
+    const ratio = reference ? formatRatio(r.median / reference.median) : '';
     lines.push(
       `| ${label(r)} | ${formatDuration(r.median)} | ${formatDuration(r.p75)} | ${formatDuration(r.p99)} | ${ratio} |`,
     );
   }
   for (const r of failed) {
     lines.push(`| ${label(r)} | n/a (error: ${r.error}) | | | |`);
+  }
+  if (rows.some(cached)) {
+    lines.push('', CACHE_NOTE);
   }
   return lines.join('\n');
 }
@@ -42,10 +60,11 @@ const METHOD = `## Method
 - Every engine runs in its fastest idiomatic configuration; the choices are listed under Engines.
 - Same indexes everywhere: \`id\` (primary or unique key), \`email\` (unique), \`age\`; \`city\` and \`score\` are not indexed.
 - Before measuring, every query is checked against LokiTS: an engine that answers differently is shown as an error, never compared.
-- Node: one child process per engine. Browsers: one page per engine.
+- Node: every engine runs in its own child process, in three interleaved rounds (A, B, A, B…); the round with the median result is kept, since the JIT settles differently from one process to the next. Browsers: one page per engine, one round.
 - Queries are measured with [mitata](https://github.com/evanwashere/mitata); bulk operations and persistence use one untimed setup per sample and a discarded warm-up sample.
 - Durations are per operation. \`remove-one\` and \`live-query\` are averaged over 1000 operations per sample.
-- \`cold-start\` runs with a warm OS file cache.`;
+- \`cold-start\` runs with a warm OS file cache.
+- With 5 samples (100,000 documents), p99 is the slowest sample.`;
 
 const LIMITS = `## Limits
 
@@ -53,6 +72,7 @@ const LIMITS = `## Limits
 - SQLite WASM persistence runs in a Worker (OPFS SAH pool VFS), the other browser engines on the main thread.
 - RxDB is measured in memory only: its fast persistent storages are not free.
 - RxDB caches query results while the data does not change: \`sort-limit\` (always the same query) and the city queries (50 values) are mostly answered from that cache.
+- SQLite \`cold-start\` opens the file and answers from disk without loading the data; the other engines load everything into memory first.
 - Numbers depend on the machine; compare ratios, not absolute times.`;
 
 function runLine(run: RunFile): string {

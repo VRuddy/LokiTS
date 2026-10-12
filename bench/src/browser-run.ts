@@ -3,11 +3,11 @@ import { mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { WEBKIT_PROFILE } from '../vitest.browser.config.ts';
-import type { ChildOutput, EngineMeta, ResultRow } from './core/results.ts';
+import { BROWSERS, WEBKIT_PROFILE } from '../vitest.browser.config.ts';
+import { type BrowserFile, collectBrowserOutputs } from './browser-results.ts';
+import type { EngineMeta, Family, ResultRow } from './core/results.ts';
 import { flagMismatches, writeRunFile } from './node.ts';
-
-type BrowserOutput = ChildOutput & { userAgent: string };
+import { BROWSER_MEMORY_ENGINES, BROWSER_PERSISTENT_ENGINES } from './registry/browser.ts';
 
 const TMP = fileURLToPath(new URL('../.tmp/browser/', import.meta.url));
 const CONFIG = fileURLToPath(new URL('../vitest.browser.config.ts', import.meta.url));
@@ -34,31 +34,39 @@ const result = spawnSync('pnpm', ['exec', 'vitest', 'run', '--config', CONFIG], 
   },
 });
 if (result.status !== 0) {
-  console.error('[bench] some browser engines failed; their rows are missing from the results');
+  console.error('[bench] some browser engines failed; they are reported as errors');
 }
 
-// files are named <browser>-<family>-<engine>.json; engine names may contain dashes
-const groups = new Map<string, Map<string, BrowserOutput>>();
-for (const file of readdirSync(TMP)) {
-  const [browser, family, ...rest] = file.replace(/\.json$/, '').split('-');
-  const output = JSON.parse(readFileSync(join(TMP, file), 'utf8')) as BrowserOutput;
-  const key = `${browser}-${family}`;
-  const group = groups.get(key) ?? new Map<string, BrowserOutput>();
-  group.set(rest.join('-'), output);
-  groups.set(key, group);
-}
+const families = values.family.split(',') as Family[];
+const groups = collectBrowserOutputs(
+  readdirSync(TMP).map((name) => ({
+    name,
+    output: JSON.parse(readFileSync(join(TMP, name), 'utf8')) as BrowserFile['output'],
+  })),
+  {
+    browsers: BROWSERS,
+    families,
+    engines: {
+      memory: Object.keys(BROWSER_MEMORY_ENGINES),
+      persistence: Object.keys(BROWSER_PERSISTENT_ENGINES),
+    },
+    sizes: values.sizes.split(',').map(Number),
+  },
+);
 
 const rows: ResultRow[] = [];
 const engines: EngineMeta[] = [];
 const runtimes: Record<string, string> = {};
 for (const [key, outputs] of groups) {
-  if (key.endsWith('-memory') && outputs.has('lokits')) {
+  if (key.endsWith('-memory')) {
     flagMismatches(outputs, 'lokits');
   }
   for (const output of outputs.values()) {
     rows.push(...output.rows);
     engines.push(output.engine);
-    runtimes[key.split('-')[0]] = output.userAgent;
+    if (output.userAgent) {
+      runtimes[key.split('-')[0]] = output.userAgent;
+    }
   }
 }
 console.log(`[bench] ${writeRunFile('browser', rows, engines, runtimes)}`);

@@ -55,4 +55,19 @@ describe('renderReport', () => {
     expect(md).toContain('420 ns');
     expect(md).toContain('12.5 ms');
   });
+
+  it('marks RxDB in-memory rows as possibly cached', () => {
+    const md = renderReport([run([row('LokiTS', 'node', 1), row('RxDB', 'node', 0.5)])]);
+    expect(md).toMatch(/\| RxDB † \|/);
+    expect(md).toContain('† RxDB may answer repeated queries from its query cache');
+  });
+
+  it('keeps tiny ratios readable', () => {
+    const md = renderReport([run([row('LokiTS', 'node', 100), row('RxDB', 'node', 0.004)])]);
+    expect(md).toContain('×0.00004');
+  });
+
+  it('describes interleaved rounds in the method', () => {
+    expect(renderReport([run([row('LokiTS', 'node', 1)])])).toContain('interleaved rounds');
+  });
 });

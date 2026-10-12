@@ -30,6 +30,11 @@ export function checkRatios(
   threshold: number,
 ): string[] {
   const failures: string[] = [];
+  for (const scenario of Object.keys(baseline)) {
+    if (!(scenario in ratios)) {
+      failures.push(`${scenario}: no result`);
+    }
+  }
   for (const [scenario, ratio] of Object.entries(ratios)) {
     const reference = baseline[scenario];
     if (reference !== undefined && ratio > reference * threshold) {
