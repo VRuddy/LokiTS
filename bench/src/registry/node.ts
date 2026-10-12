@@ -9,4 +9,13 @@ export const NODE_MEMORY_ENGINES: Record<string, () => Promise<MemoryEngine>> = 
   sqlite: async () => (await import('../engines/node/sqlite.ts')).sqliteNode,
 };
 
-export const NODE_PERSISTENT_ENGINES: Record<string, () => Promise<PersistentEngine>> = {};
+const persistent = () => import('../engines/node/persistent.ts');
+
+export const NODE_PERSISTENT_ENGINES: Record<string, () => Promise<PersistentEngine>> = {
+  'lokits-fs': async () => (await persistent()).lokitsFs,
+  'lokits-fs-structured': async () => (await persistent()).lokitsFsStructured,
+  'lokijs-fs': async () => (await persistent()).lokijsFs,
+  'lokidb-fs': async () => (await persistent()).lokidbFs,
+  'tinybase-file': async () => (await persistent()).tinybaseFile,
+  'sqlite-file': async () => (await persistent()).sqliteFile,
+};

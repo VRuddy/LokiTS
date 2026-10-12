@@ -1,7 +1,10 @@
-import { writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { runMemory } from './core/memory-scenarios.ts';
-import { NODE_MEMORY_ENGINES } from './registry/node.ts';
+import { runPersistence } from './core/persistence-scenarios.ts';
+import { NODE_MEMORY_ENGINES, NODE_PERSISTENT_ENGINES } from './registry/node.ts';
 
 const { values } = parseArgs({
   options: {
@@ -30,6 +33,24 @@ if (values.family === 'memory') {
     scenarios,
   });
   writeFileSync(values.out ?? '', JSON.stringify(output));
+} else if (values.family === 'persistence') {
+  const load = NODE_PERSISTENT_ENGINES[name];
+  if (!load) {
+    throw new Error(`unknown persistent engine ${name}`);
+  }
+  const root = mkdtempSync(join(tmpdir(), `bench-${name}-`));
+  try {
+    const output = await runPersistence(await load(), {
+      sizes,
+      env: 'node',
+      quick: values.quick,
+      scenarios,
+      location: (size) => join(root, String(size)),
+    });
+    writeFileSync(values.out ?? '', JSON.stringify(output));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 } else {
   throw new Error(`unknown family ${values.family}`);
 }
