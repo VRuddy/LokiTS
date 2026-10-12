@@ -50,13 +50,26 @@ export function errorRow(
   base: Omit<ResultRow, 'median' | 'p75' | 'p99' | 'samples'>,
   error: unknown,
 ): ResultRow {
-  const message = error instanceof Error ? error.message : String(error);
   return {
     ...base,
     median: Number.NaN,
     p75: Number.NaN,
     p99: Number.NaN,
     samples: 0,
-    error: message,
+    error: describeError(error),
   };
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'object' && error !== null) {
+    const json = JSON.stringify(error);
+    // DOM events serialize to {}: their type says more
+    return json === '{}'
+      ? `${error.constructor.name} ${(error as { type?: string }).type ?? ''}`
+      : json;
+  }
+  return String(error);
 }
