@@ -17,7 +17,7 @@ export interface PersistenceRunOptions {
 
 function samplesFor(size: number, quick: boolean): number {
   if (quick) {
-    return 2;
+    return 4;
   }
   return size <= 10_000 ? 10 : 5;
 }

@@ -63,6 +63,7 @@
     "test:coverage": "vitest run --coverage",
     "bench": "node --expose-gc --disable-warning=ExperimentalWarning bench/src/node.ts",
     "bench:report": "node bench/src/report.ts",
+    "bench:quick": "node --expose-gc --disable-warning=ExperimentalWarning bench/src/quick.ts",
     "bench:browser": "vitest run --config vitest.browser-bench.config.ts",
     "test:dist": "node --test dist-tests/smoke.test.mjs"
   },

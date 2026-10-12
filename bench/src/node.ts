@@ -17,6 +17,8 @@ export interface NodeRunOptions {
   sizes: number[];
   quick: boolean;
   scenarios?: string[];
+  // interleaved child processes per engine (A, B, A, B…)
+  rounds?: number;
 }
 
 export function flagMismatches(outputs: Map<string, ChildOutput>, reference: string): void {
@@ -84,18 +86,41 @@ function runChild(engine: string, opts: NodeRunOptions, dir: string): ChildOutpu
   return JSON.parse(readFileSync(out, 'utf8')) as ChildOutput;
 }
 
+// The JIT settles differently from one process to the next: keep the median round per scenario.
+export function combineRounds(rounds: ChildOutput[]): ChildOutput {
+  const groups = new Map<string, ResultRow[]>();
+  for (const round of rounds) {
+    for (const row of round.rows) {
+      const key = `${row.scenario}|${row.size}|${row.storage ?? ''}`;
+      groups.set(key, [...(groups.get(key) ?? []), row]);
+    }
+  }
+  const rows: ResultRow[] = [];
+  for (const group of groups.values()) {
+    const ok = group.filter((r) => !r.error).sort((a, b) => a.median - b.median);
+    rows.push(ok.length > 0 ? ok[Math.floor((ok.length - 1) / 2)] : group[0]);
+  }
+  return { ...rounds[0], rows };
+}
+
 export async function runNodeEngines(
   opts: NodeRunOptions,
 ): Promise<{ rows: ResultRow[]; engines: EngineMeta[] }> {
   const dir = mkdtempSync(join(tmpdir(), 'lokits-bench-'));
-  const outputs = new Map<string, ChildOutput>();
+  const rounds = new Map<string, ChildOutput[]>();
   try {
-    for (const engine of opts.engines) {
-      console.log(`[bench] ${opts.family} / ${engine}`);
-      outputs.set(engine, runChild(engine, opts, dir));
+    for (let round = 1; round <= (opts.rounds ?? 1); round++) {
+      for (const engine of opts.engines) {
+        console.log(`[bench] ${opts.family} / ${engine} (round ${round})`);
+        rounds.set(engine, [...(rounds.get(engine) ?? []), runChild(engine, opts, dir)]);
+      }
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+  const outputs = new Map<string, ChildOutput>();
+  for (const [engine, list] of rounds) {
+    outputs.set(engine, combineRounds(list));
   }
   if (opts.family === 'memory' && outputs.has('lokits')) {
     flagMismatches(outputs, 'lokits');
@@ -137,6 +162,7 @@ async function main(): Promise<void> {
       sizes: { type: 'string', default: '10000,100000' },
       scenarios: { type: 'string' },
       quick: { type: 'boolean', default: false },
+      rounds: { type: 'string', default: '3' },
     },
   });
   const families: Family[] =
@@ -153,6 +179,7 @@ async function main(): Promise<void> {
       sizes,
       quick: values.quick,
       scenarios: values.scenarios?.split(','),
+      rounds: Number(values.rounds),
     });
     rows.push(...result.rows);
     engines.push(...result.engines);
